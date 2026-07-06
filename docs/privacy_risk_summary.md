@@ -5,34 +5,32 @@
 ## What is protected
 
 nfanon replaces every IP address (source, destination, next-hop, router/exporter)
-with a pseudonym using **CryptoPAn prefix-preserving anonymization**. After
+with another IP address using **CryptoPAn prefix-preserving anonymization**. After
 anonymization:
 
 - Real host and network identities are no longer directly visible.
-- The mapping is **consistent** — the same real IP always maps to the same
-  pseudonym — so relational analysis (who-talks-to-whom, top talkers) still works
-  without exposing identities.
-- The mapping is **prefix-preserving** — addresses in the same subnet stay in the
-  same pseudonymized subnet — so subnet/ASN-level grouping still works.
+- The mapping is **consistent** such that the same real IP always maps to the same
+  pseudonym. Relational analysis is still valid without exposing identities.
+- The mapping is **prefix-preserving**: addresses in the same subnet stay in the
+  same pseudonymized subnet.
 
 ## What remains exposed
 
 Anonymizing IPs alone does **not** make a flow record fully anonymous. These
-fields are preserved (by design, for analysis) and can still leak information:
+fields are preserved and can still leak information:
 
 - **Ports and protocol** reveal the services in use (443 = HTTPS, 22 = SSH,
   53 = DNS, 3389 = RDP …).
-- **Byte and packet counts** are a volume fingerprint; an unusual exact size can
+- **Byte and packet counts** are a volume fingerprint as an unusual exact size can
   single out a specific transfer or host.
 - **Timing** (start/end/duration) is a behavioral fingerprint and supports
   correlation across records.
-- **TCP flags** expose connection behavior (scans, resets).
-- The **prefix structure itself** is retained — which is useful, but is also the
-  thing an attacker exploits (below).
+- **TCP flags** expose connection behavior.
+- The **prefix structure itself** is retained.
 
 ## Key risks of prefix-preserving pseudonymization
 
-1. **Reversibility.** CryptoPAn is keyed and deterministic — it is
+1. **Reversibility.** CryptoPAn is keyed and deterministic as it is
    *pseudonymization*, not irreversible anonymization. Anyone with the key can
    reverse the mapping. **The key must be protected and rotated.**
 2. **Injection attacks.** An attacker who can inject flows with known IP
@@ -40,24 +38,22 @@ fields are preserved (by design, for analysis) and can still leak information:
    reconstruct the prefix tree.
 3. **Fingerprinting / frequency analysis.** If an attacker already knows a few
    real IPs in the dataset (or the traffic pattern of a known host), the
-   preserved prefix structure plus the preserved ports/volumes/timing can
+   preserved prefix structure with the knowledge of other preserved fields can
    re-identify hosts.
 
-## Key management (required practice)
+## Key management
 
-- The anonymization key is **never** committed, shared, documented, printed in
+- The anonymization key should **never** be committed, shared, documented, printed in
   logs, or stored in a public folder. Only a short fingerprint is logged.
-- Stored locally in `secret/anon.key` (perms `600`) or in the `$NFANON_KEY`
+- Stored locally in `secret/anon.key` or in the `$NFANON_KEY`
   environment variable; `.gitignore` excludes `secret/` and `*.key`.
 - **Rotate the key per release.** A new key yields an entirely different mapping,
   which prevents correlating one release against another.
 
-## Is prefix preservation useful or risky? Both.
+## Project Scope and Areas of Improvement
 
-- **Useful:** it keeps subnet-level structure so research (traffic per subnet,
-  top talkers, DDoS/botnet clustering) still works on anonymized data.
-- **Risky:** that same structure is what injection and fingerprinting attacks
-  target, and the key makes the mapping reversible.
+While prefix preservation keeps the subnet-level structure so analysis still works on anonymized data,
+it also exposes the system to injection and fingerprinting attacks, and the key makes the mapping reversible.
 
 For this assignment the anonymization is deliberately scoped to **nfanon on IP
 fields only**, because the task requires time, ports, protocol, packets, bytes,
@@ -69,14 +65,7 @@ breaking the required-preserved fields** unless explicitly permitted:
 - suppressing or generalizing rare flow profiles (k-anonymity) to remove unique
   fingerprints,
 - bucketing byte/packet volumes to blur volume fingerprints,
-- differential-privacy noise applied only to **published aggregate statistics**,
-  never to per-record fields (which would corrupt protocol syntax).
+- differential-privacy noise applied only to **published aggregate statistics**
+  (never to per-record fields as it would corrupt protocol syntax).
 
-These are noted as next steps, not part of the current nfanon-based prototype.
-
-## Bottom line
-
-nfanon protects **identity** (IP addresses) while preserving **utility** for
-traffic analysis. It does **not** by itself defeat injection or fingerprinting,
-and it is reversible with the key — so the residual controls are strict key
-management, key rotation, and limiting who receives the data.
+These are noted as suggested next steps, not part of the current nfanon-based prototype.
