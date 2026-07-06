@@ -5,7 +5,6 @@
 ![Shell](https://img.shields.io/badge/Bash-prototype-4EAA25?logo=gnu-bash&logoColor=white)
 ![Tooling](https://img.shields.io/badge/tooling-nfdump%20%7C%20nfanon-blue)
 ![Scope](https://img.shields.io/badge/data-synthetic%20only-lightgrey)
-![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
 
@@ -64,7 +63,6 @@ analysis and hardening options.
 ```
 .
 ├── README.md                     # this page
-├── LICENSE                       # MIT; nfdump is separately BSD-licensed
 ├── folders                       # month folders to process (e.g. 2026-01)
 ├── generate_key.sh               # create a local nfanon key (0600, git-ignored)
 ├── make_sample_data.sh           # populate raw/ with sample nfcapd.* files
@@ -227,6 +225,5 @@ Peter Haag (BSD). AmLight is operated by CIARA at FIU with NSF support.
 
 ## License
 
-This project's original code and documentation are released under the MIT
-License (see [`LICENSE`](LICENSE)). The nfdump suite is **not** included here and
+The nfdump suite is **not** included here and
 is distributed separately under its own BSD license.
