@@ -1,11 +1,10 @@
 # validation_report.md
 
 **CIARA/FIU Flow Dataset Anonymization Prototype — Phase 4: Validation**
-Sample/synthetic data only. Numbers below match the sample dataset example.
 
 ## What validation must confirm
 
-nfanon changes **only IP addresses**, so every non-IP measurement must be
+nfanon changes only the IP addresses: every non-IP measurement must be
 identical before and after, and the original IPs must no longer be visible:
 
 - Flow record count — unchanged
@@ -19,21 +18,21 @@ identical before and after, and the original IPs must no longer be visible:
 ## How each check is run
 
 ```
-# counts, totals, protocol distribution (one command):
+# counts, totals, protocol distribution:
 nfdump -r raw/2026-01/2026-01-01/nfcapd.202601010000 -I
 nfdump -r anon/2026-01/2026-01-01/nfcapd.202601010000 -I
 
 # port distribution:
 nfdump -r <file> -s dstport/flows -n 0
 
-# confirm original IPs are gone (should print nothing):
+# confirm original IPs are gone:
 nfdump -r anon/.../nfcapd.202601010000 -o csv | grep -E '192\.0\.2\.|198\.51\.100\.|203\.0\.113\.'
 
-# time-series (per-minute flow volume), unchanged by construction:
+# time-series (per-minute flow volume) unchanged by construction:
 nfdump -r <file> -o 'csv:%ts,%pkt,%byt' | cut -d: -f1-2 | sort | uniq -c
 ```
 
-`validate_flows.sh` runs all of these for every file in `folders` and writes
+`validate_flows.sh` runs all of these for every file in `folders` and writes the results into 
 `logs/validation.txt`.
 
 ## Results (sample dataset)
@@ -66,10 +65,9 @@ OVERALL: PASS — utility preserved, IPs anonymized
 
 ## Before / after record comparison
 
-The IPs change; nothing else does. Note prefix preservation: `192.0.2.10`
-appears in two flows and maps to the **same** anonymized address both times, and
-`.10`, `.11`, `.12`, `.13` map to addresses in the **same** anonymized block —
-so subnet grouping still works.
+The IPs change; no other fields do. Note prefix preservation: `192.0.2.10`
+appears in two flows and maps to the same anonymized address both times, and
+`.10`, `.11`, `.12`, `.13` map to addresses in the **same** anonymized block.
 
 | # | src_ip (before → after) | dst_ip (before → after) | port | proto | pkts | bytes |
 |---|---|---|---|---|---|---|
@@ -79,11 +77,10 @@ so subnet grouping still works.
 | 4 | 192.0.2.10 → 10.44.18.91 | 198.51.100.50 → 172.19.88.50 | 80 | TCP | 25 | 21000 |
 | 5 | 192.0.2.13 → 10.44.18.94 | 198.51.100.60 → 172.19.88.60 | 0 | ICMP | 2 | 196 |
 
-(Exact anonymized values depend on the nfanon key; the *structure* — consistency
-and prefix preservation — is what the key guarantees.)
+Exact anonymized values depend on the nfanon key.
 
 ## Conclusion
 
 Utility is fully preserved for traffic analysis (counts, protocols, ports,
-volumes, and timing are unchanged), and the real IP addresses are gone.
+volumes, and timing are unchanged). The real IP addresses are gone.
 Validation **PASSES**.
