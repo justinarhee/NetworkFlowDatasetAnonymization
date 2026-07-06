@@ -1,0 +1,21 @@
+# ---- NEVER COMMIT: anonymization key ----
+secret/
+*.key
+*.pem
+
+# ---- NEVER COMMIT: flow data (raw or anonymized) ----
+raw/**
+anon/**
+!raw/.gitkeep
+!anon/.gitkeep
+*.nfcapd
+nfcapd.*
+
+# ---- NEVER COMMIT: logs (may contain internal paths) ----
+logs/*
+!logs/.gitkeep
+
+# ---- OS / editor cruft ----
+.DS_Store
+Thumbs.db
+*.swp
