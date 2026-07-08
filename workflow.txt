@@ -1,0 +1,263 @@
+
+## full workflow. explanation below 
+colima start
+
+docker run --rm -it \
+  --platform linux/arm64 \
+  -v "$PWD":/work \
+  -w /work \
+  ubuntu:24.04 bash
+
+  export DEBIAN_FRONTEND=noninteractive
+
+apt-get update
+apt-get install -y nfdump coreutils gawk
+
+# Enable the nfgen binary saved in the project
+export PATH="/work/.local-tools:$PATH"
+
+# Confirm everything is available
+nfdump -V
+command -v nfanon
+command -v nfgen
+file "$(command -v nfgen)"
+
+# Make scripts executable
+chmod +x *.sh
+
+# Generate or reuse the secret key
+./generate_key.sh
+
+# Generate or reuse nfgen sample data
+./make_sample_data.sh
+
+# Confirm the sample
+RAW_FILE="raw/2026-01/2026-01-01/nfcapd.202601010000"
+
+test -f "$RAW_FILE" || {
+  echo "ERROR: sample file was not generated"
+  exit 1
+}
+
+nfdump -r "$RAW_FILE" -o extended | head
+nfdump -r "$RAW_FILE" -I
+
+# Dry run
+./anonymize_flows.sh
+
+# Perform anonymization
+./anonymize_flows.sh --run
+
+# Confirm anonymized output exists
+find anon -type f -name 'nfcapd.*' -print
+
+# Run full validation
+./validate_flows.sh
+
+# Display saved validation report
+cat logs/validation.txt
+
+## Workflow commands and what each does
+
+### Start Docker from your Mac
+
+bash
+colima start
+
+
+Starts the Linux VM that Docker uses on your Mac.
+
+bash
+docker run --rm -it -v "$PWD":/work -w /work ubuntu:24.04 bash
+
+
+Starts a clean Ubuntu container and mounts your current repo into Docker as `/work`.
+
+---
+
+## Inside Docker
+
+bash
+export DEBIAN_FRONTEND=noninteractive
+
+
+Prevents install prompts like timezone questions.
+
+bash
+apt-get update
+
+
+Refreshes Ubuntu’s package list.
+
+bash
+apt-get install -y nfdump coreutils gawk
+
+
+Installs the main flow tools and shell utilities. `nfdump` gives you `nfdump` and `nfanon`.
+
+bash
+export PATH="/work/.local-tools:$PATH"
+
+
+Makes your saved Linux ARM64 `nfgen` binary available as a command.
+
+bash
+nfdump -V
+command -v nfanon
+command -v nfgen
+
+
+Confirms the required tools are available.
+
+bash
+chmod +x *.sh
+
+
+Makes your shell scripts executable.
+
+---
+
+## Generate data
+
+bash
+./generate_key.sh
+
+
+Creates the local anonymization key at `secret/anon.key`. This should never be committed or shared. Your docs say the key is used by `nfanon` and only a fingerprint should appear in logs. 
+
+bash
+./make_sample_data.sh
+
+
+Creates synthetic nfdump flow files under `raw/`. Your script’s purpose is to populate `raw/` with sample `nfcapd.*` binary files. 
+
+bash
+find raw -type f -print
+
+
+Shows the generated raw input files.
+
+---
+
+## Inspect raw data
+
+bash
+RAW_FILE=$(find raw -type f -name 'nfcapd.*' | sort | head -n 1)
+echo "$RAW_FILE"
+
+
+Finds one generated raw flow file and stores its path in `RAW_FILE`.
+
+bash
+nfdump -r "$RAW_FILE" -I
+
+
+Shows internal file statistics like flows, packets, and bytes.
+
+bash
+nfdump -r "$RAW_FILE" -o extended | head
+
+
+Prints readable sample flow records so you can confirm the file contains flow data.
+
+---
+
+## Anonymize
+
+bash
+./anonymize_flows.sh
+
+
+Runs dry-run mode. It shows what would be anonymized but does not write output.
+
+bash
+./anonymize_flows.sh --run
+
+
+Actually anonymizes the raw files into `anon/`, preserving the same folder structure. The workflow uses `nfanon -r raw/... -w anon/...` per file so the tree is mirrored instead of collapsed. 
+
+bash
+find anon -type f -print
+
+
+Shows the anonymized output files.
+
+---
+
+## Validate
+
+bash
+./validate_flows.sh
+
+
+Compares raw vs anonymized files. It checks that non-IP fields stayed the same and original IPs were replaced.
+
+bash
+cat logs/validation.txt
+
+
+Displays the validation report. You want to see `OVERALL: PASS`.
+
+Validation should confirm counts, packets, bytes, protocol distribution, port distribution, and time-series utility are preserved, while real IPs are gone. 
+
+---
+
+# Files to check for output
+
+## Main output files
+
+text
+raw/2026-01/2026-01-01/nfcapd.202601010000
+
+
+Generated raw synthetic input file.
+
+text
+anon/2026-01/2026-01-01/nfcapd.202601010000
+
+
+Anonymized output file.
+
+text
+logs/anonymize.log
+
+
+Shows dry-run/run details, input-to-output paths, and key fingerprint.
+
+text
+logs/validation.txt
+
+
+Most important proof file. Should show:
+
+text
+BEFORE: flows=20, packets=466, bytes=117760
+AFTER : flows=20, packets=466, bytes=117760
+OVERALL: PASS
+
+
+## Important file not to share
+
+text
+secret/anon.key
+
+
+This proves the key exists, but do **not** open, print, commit, or share it.
+
+## Git check after workflow
+
+Outside Docker, on your Mac:
+
+bash
+git status --ignored
+
+
+Make sure these are ignored/not committed:
+
+text
+secret/
+raw/
+anon/
+logs/
+.local-tools/
+
