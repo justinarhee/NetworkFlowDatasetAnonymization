@@ -68,7 +68,7 @@ analysis and hardening options.
 ├── make_sample_data.sh           # populate raw/ with sample nfcapd.* files
 ├── anonymize_flows.sh            # MAIN workflow — dry-run by default, --run to execute
 ├── validate_flows.sh             # before/after validation
-├── sample_flow_records.csv       # illustrative records (documentation only)
+├── sample.pcap                   # sample pcap file for testing workflow
 ├── raw/   anon/   logs/          # data in / out / logs
 └── docs/
     ├── format_discovery.md       # Deliverable 1 — confirmed format & fields
@@ -103,7 +103,7 @@ cd NetworkFlowDatasetAnonymization
 ./make_sample_data.sh                   #  uses nfgen; falls back with instructions
 
 # 3) inspect a file to confirm the format
-nfdump -r raw/2026-01/2026-01-01/nfcapd.202601010000 -o extended | head
+nfdump -R raw/2026-01/2026-01-01 -o extended | head
 
 # 4) DRY-RUN: shows what would happen, writes nothing
 ./anonymize_flows.sh
