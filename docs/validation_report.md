@@ -1,86 +1,89 @@
-# validation_report.md
+# Validation Report
 
-**CIARA/FIU Flow Dataset Anonymization Prototype — Phase 4: Validation**
+**CIARA/FIU Flow Dataset Anonymization Prototype — Phase 4**
 
-## What validation must confirm
+## Validation policy
 
-nfanon changes only the IP addresses: every non-IP measurement must be
-identical before and after, and the original IPs must no longer be visible:
+`validate_flows.sh` must prove that the required analytical data is unchanged
+and every IP field is pseudonymized. It fails—not passes—when a listed folder
+is missing, no `nfcapd.*` files are found, an anonymized counterpart is
+missing, nfdump cannot read a file, or any comparison differs.
 
-- Flow record count — unchanged
-- Total packets — unchanged
-- Total bytes — unchanged
-- Protocol distribution — unchanged
-- Port distribution — unchanged
-- Time-series traffic volume — unchanged (nfanon does not touch time fields)
-- Real IP addresses — **no longer visible**
+For every raw/anonymized file pair it compares:
 
-## How each check is run
+- flow count and total packets/bytes,
+- every preserved record field: start/end time, protocol, source/destination
+  ports, packet count, byte count, and TCP flags,
+- packet, byte, protocol, source-port, and destination-port distributions,
+- per-minute flow, packet, and byte time series.
 
+Across the complete dataset it also compares source and destination top-talker
+traffic structure and validates all source, destination, next-hop, BGP
+next-hop, and router/exporter IP fields. Original addresses are derived from
+the raw data rather than from hard-coded prefixes, so the check covers both
+IPv4 and IPv6. The mapping check confirms that each original address maps to
+one changed pseudonym and that no two originals collide in the tested data.
+
+## Genuine Docker test result
+
+Tested July 7, 2026 using Ubuntu, nfdump/nfanon 1.7.3, and five synthetic
+NetFlow v5 records collected by nfcapd. Raw, anonymized, key, and log artifacts
+remain git-ignored.
+
+| Check | Before | After | Result |
+|---|---:|---:|---|
+| Flow records | 5 | 5 | PASS |
+| Total packets | 59 | 59 | PASS |
+| Total bytes | 42,128 | 42,128 | PASS |
+| Protocols | TCP=3, UDP=1, ICMP=1 | Same | PASS |
+| Preserved record fields | Baseline | Identical | PASS |
+| Packet/byte distributions | Baseline | Identical | PASS |
+| Source/destination port distributions | Baseline | Identical | PASS |
+| Per-minute time series | Baseline | Identical | PASS |
+| Source/destination top-talker structure | Baseline | Identical | PASS |
+| Original IPs visible | Yes | No | PASS |
+| Deterministic, collision-free mapping | N/A | Confirmed in tested data | PASS |
+
+Automated output:
+
+```text
+input files discovered: 1
+BEFORE: flows=5, packets=59, bytes=42128
+AFTER : flows=5, packets=59, bytes=42128
+record count and packet/byte totals: identical [PASS]
+all preserved record fields (time/protocol/ports/packets/bytes/TCP flags): identical [PASS]
+packet distribution: identical [PASS]
+byte distribution: identical [PASS]
+protocol distribution: identical [PASS]
+source-port distribution: identical [PASS]
+destination-port distribution: identical [PASS]
+per-minute time-series flow/packet/byte volume: identical [PASS]
+source top-talker structure: identical [PASS]
+destination top-talker structure: identical [PASS]
+all original IP addresses were replaced (data-driven IPv4/IPv6 check) [PASS]
+IP pseudonyms are changed, deterministic, and collision-free across the dataset [PASS]
+OVERALL: PASS — required utility preserved and all IP fields pseudonymized
 ```
-# counts, totals, protocol distribution:
-nfdump -r raw/2026-01/2026-01-01/nfcapd.202601010000 -I
-nfdump -r anon/2026-01/2026-01-01/nfcapd.202601010000 -I
 
-# port distribution:
-nfdump -r <file> -s dstport/flows -n 0
+Exact pseudonyms are intentionally omitted: they depend on the secret key and
+are unnecessary for demonstrating the checks.
 
-# confirm original IPs are gone:
-nfdump -r anon/.../nfcapd.202601010000 -o csv | grep -E '192\.0\.2\.|198\.51\.100\.|203\.0\.113\.'
+### nfgen compatibility run
 
-# time-series (per-minute flow volume) unchanged by construction:
-nfdump -r <file> -o 'csv:%ts,%pkt,%byt' | cut -d: -f1-2 | sort | uniq -c
+The official nfdump `v1.7.3` nfgen test utility was also compiled for Linux
+ARM64 and exercised through the same workflow. It generated 20 readable test
+records containing IPv4 and IPv6 extensions. Before and after totals were 20
+records, 466 packets, and 117,760 bytes; every validation check passed.
+
+## Reproduce the validation
+
+```bash
+./anonymize_flows.sh          # preflight + dry run
+./anonymize_flows.sh --run
+./validate_flows.sh
+cat logs/validation.txt
 ```
 
-`validate_flows.sh` runs all of these for every file in `folders` and writes the results into 
-`logs/validation.txt`.
-
-## Results (sample dataset)
-
-**Before anonymization**
-```
-Flow records:  5
-Total packets: 59
-Total bytes:   42128
-Protocols:     TCP=3, UDP=1, ICMP=1
-Dest ports:    443=1, 22=1, 53=1, 80=1, 0=1
-```
-
-**After anonymization**
-```
-Flow records:  5          (identical)
-Total packets: 59         (identical)
-Total bytes:   42128      (identical)
-Protocols:     TCP=3, UDP=1, ICMP=1   (identical)
-Dest ports:    443=1, 22=1, 53=1, 80=1, 0=1   (identical)
-Real IP addresses visible: No
-```
-
-Automated check output:
-```
-counts : IDENTICAL (flows/packets/bytes/protocols preserved)  [PASS]
-real IPs visible in anon output: No                           [PASS]
-OVERALL: PASS — utility preserved, IPs anonymized
-```
-
-## Before / after record comparison
-
-The IPs change; no other fields do. Note prefix preservation: `192.0.2.10`
-appears in two flows and maps to the same anonymized address both times, and
-`.10`, `.11`, `.12`, `.13` map to addresses in the **same** anonymized block.
-
-| # | src_ip (before → after) | dst_ip (before → after) | port | proto | pkts | bytes |
-|---|---|---|---|---|---|---|
-| 1 | 192.0.2.10 → 10.44.18.91 | 198.51.100.20 → 172.19.88.20 | 443 | TCP | 18 | 14220 |
-| 2 | 192.0.2.11 → 10.44.18.92 | 198.51.100.30 → 172.19.88.30 | 22 | TCP | 10 | 6200 |
-| 3 | 192.0.2.12 → 10.44.18.93 | 198.51.100.40 → 172.19.88.40 | 53 | UDP | 4 | 512 |
-| 4 | 192.0.2.10 → 10.44.18.91 | 198.51.100.50 → 172.19.88.50 | 80 | TCP | 25 | 21000 |
-| 5 | 192.0.2.13 → 10.44.18.94 | 198.51.100.60 → 172.19.88.60 | 0 | ICMP | 2 | 196 |
-
-Exact anonymized values depend on the nfanon key.
-
-## Conclusion
-
-Utility is fully preserved for traffic analysis (counts, protocols, ports,
-volumes, and timing are unchanged). The real IP addresses are gone.
-Validation **PASSES**.
+The generated `logs/validation.txt` is the authoritative report for the
+current local dataset. It is deliberately ignored by Git because it can
+contain internal paths.

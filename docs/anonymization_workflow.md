@@ -6,8 +6,9 @@
 
 It anonymizes the **IP fields** in nfdump binary flow files using **nfanon**
 (prefix-preserving CryptoPAn), mirrors the `raw/` folder structure into a
-separate `anon/` folder, and validates that only the IP fields have changed. Other fields such as time, protocol, ports, packets, bytes, and TCP flags
-are left byte-identical such that the data still supports traffic analysis.
+separate `anon/` folder, and validates that only the IP fields have changed.
+Other fields such as time, protocol, ports, packets, bytes, and TCP flags retain
+identical values so the data still supports traffic analysis.
 
 ## Which fields change vs stay
 
@@ -29,7 +30,7 @@ still share a subnet after anonymization, so subnet-level analysis remains intac
 |---|---|
 | `folders` | lists the month folders under `raw/` to process (`2026-01`) |
 | `generate_key.sh` | creates a local nfanon key (0600, git-ignored) |
-| `make_sample_data.sh` | populates `raw/` with sample `nfcapd.*` files (nfgen) |
+| `make_sample_data.sh` | creates sample `nfcapd.*` files with nfgen or the built-in Bash+nfcapd fallback |
 | `anonymize_flows.sh` | **main workflow**, dry-run by default, `--run` to execute |
 | `validate_flows.sh` | before/after validation (Phase 4) |
 | `logs/anonymize.log` | records every input→output and the key *fingerprint* |
@@ -50,15 +51,17 @@ nfdump -r raw/2026-01/2026-01-01/nfcapd.202601010000 -I        # stats
 **3. Create the key (never committed).**
 ```
 ./generate_key.sh          # writes secret/anon.key, perms 600
-# or:  export NFANON_KEY=<32-char-or-64-hex-string>
+# or: export NFANON_KEY=<32-char-or-0x-plus-64-hex-string>
 ```
 
-**4. Dry-run first (writes nothing).**
+**4. Dry-run first (writes no anonymized output).**
 ```
 ./anonymize_flows.sh                 # default is dry-run
 ```
 Prints which `nfanon` commands *would* run and which output files
-*would* be created, without creating any actual changes to the disk.
+*would* be created. It appends an audit log but does not create files under
+`anon/`. Before either mode proceeds, preflight requires every listed folder
+to exist and contain at least one matching flow file.
 
 **5. Run it (preserves folder structure, writes to `anon/`).**
 ```
@@ -76,6 +79,11 @@ collapse all the files into a single file and destroy the file-tree structure.
 ```
 ./validate_flows.sh        # see validation_report.md
 ```
+
+The validator fails on missing/zero inputs or missing outputs. It compares all
+required preserved fields, totals, distributions, time series, dataset-wide
+top-talker structure, every discovered IPv4/IPv6 value, and deterministic
+one-to-one pseudonym mappings.
 
 **7. Document results** in Markdown (these deliverables).
 
@@ -96,6 +104,8 @@ DRY-RUN complete. 3 file(s) WOULD be anonymized. Re-run with --run.
   printed, logged, committed, or written into any deliverable. Only a short
   `sha256` fingerprint appears in the log.
 - `secret/`, `*.key`, `raw/`, `anon/`, and `logs/` data are in `.gitignore`.
-- The key is a 32-character string or a 64-hex-digit string, as nfanon requires.
+- The key is a 32-character string or `0x` followed by 64 hex digits, as
+  nfanon requires. The workflow also normalizes legacy unprefixed 64-hex keys
+  in memory without printing them.
 - Rotate the key per release to allow the fresh key to produce a completely different
   mapping, preventing cross-dataset correlation.

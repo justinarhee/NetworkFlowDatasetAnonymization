@@ -19,3 +19,6 @@ logs/*
 .DS_Store
 Thumbs.db
 *.swp
+
+# ---- Local platform-specific development tools ----
+.local-tools/

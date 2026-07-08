@@ -83,7 +83,9 @@ analysis and hardening options.
 ## Quick start — Testing
 
 **Prerequisites (Ubuntu):** install the nfdump suite, which provides
-`nfdump`, `nfanon`, `nfcapd`, `sfcapd`, and `nfgen`.
+`nfdump`, `nfanon`, `nfcapd`, and `sfcapd`. Ubuntu does not package the
+optional `nfgen` test utility. A locally built Linux ARM64 copy can live at
+`.local-tools/nfgen`; otherwise the prototype uses its nfcapd fallback.
 
 ```bash
 sudo apt-get update && sudo apt-get install -y nfdump
@@ -100,7 +102,7 @@ cd NetworkFlowDatasetAnonymization
 ./generate_key.sh                       #  or: export NFANON_KEY=<32-char-or-64-hex>
 
 # 2) create sample nfdump binary files under raw/ (synthetic, non-sensitive data)
-./make_sample_data.sh                   #  uses nfgen; falls back with instructions
+./make_sample_data.sh                   # nfgen, or automatic Bash+nfcapd fallback
 
 # 3) inspect a file to confirm the format
 nfdump -r raw/2026-01/2026-01-01/nfcapd.202601010000 -o extended | head
@@ -119,8 +121,9 @@ If you have `nfcapd.*` files to use as the dataset to be anonymized, add them in
 `raw/<month>/<date>/` and add the `<month>` to the `folders` file. Steps 4–6 are unchanged.
 
 > **Note:** `nfdump`/`nfanon` are not bundled here as they are separately
-> licensed. If `make_sample_data.sh` can't find `nfgen`, it prints how to
-> collect sample data with `nfcapd` or convert a pcap with `nfpcapd`.
+> licensed. Without `nfgen`, `make_sample_data.sh` automatically sends five
+> synthetic NetFlow v5 records to a temporary local `nfcapd` collector and
+> retains exactly one verified, non-empty nfdump file.
 
 ---
 
@@ -227,3 +230,79 @@ Peter Haag (BSD). AmLight is operated by CIARA at FIU with NSF support.
 
 The nfdump suite is **not** included here and
 is distributed separately under its own BSD license.
+
+
+## Issues (Changes to be made/ Notes)
+1) Produce real synthetic nfdump input
+The repository currently contains only an illustrative CSV. raw/ has no binary nfcapd.* files, and [make_sample_data.sh (line 17)] cannot run here because nfgen is unavailable.
+Run the prototype on Ubuntu with nfgen, or generate approved sample flows using nfcapd/nfpcapd. 
+
+2) fixing poitn #1. nfgen isnt in macos nfdump suite. have to use docker 
+
+3) Fix false-positive validation
+Currently, [validate_flows.sh (line 41)]reports OVERALL: PASS even when raw/2026-01 does not exist and zero files were tested. It must fail when:
+A listed input directory is missing.
+No flow files are found.
+An output file is missing.
+Any validation command fails.
+
+4) Implement every required validation check
+The validator still needs to compare before versus after for:
+Packet and byte distributions, not only totals.
+Source and destination port distributions.
+Time-series traffic volume.
+Top-talker structure—the broader assignment explicitly requires this.
+Ideally, every preserved record field: timestamps, protocol, ports, packets, bytes, and TCP flags.
+At present, it only displays the anonymized destination-port distribution rather than comparing both sides [lines 60–63 (line 60)]
+
+5) Make IP-removal checking data-driven
+The current check only searches for three hard-coded IPv4 test prefixes ([lines 21–23 (line 21)](/sh:21)). Instead, extract all original source, destination, next-hop, and exporter addresses and confirm they are absent or transformed. Include IPv6 if the sample format supports it.
+
+6) Replace illustrative results with genuine results
+[validation_report.md (line 38)](/docs/validation_report.md:38) claims a five-record passing run, but the CSV is not converted into the nfdump files used by the scripts, and no corresponding output exists. Replace those figures and example mappings with results captured from an actual run.
+
+7) Complete the tool-research deliverable
+Expand the partial tools section in [format_discovery.md (line 83)](/docs/format_discovery.md:83) into the requested comparison table covering:
+Reading
+Collection
+Conversion
+Anonymization
+Validation
+Recommendation/use decision
+
+Finish the privacy-and-utility evidence
+The risk discussion is good, but the final report should explicitly demonstrate which analyses still work—especially distributions, time series, and top talkers—and show consistent/prefix-preserving mappings while explaining their privacy risk.
+
+## Fixes to above 7 issues
+Implemented issues 3–7.
+Key changes:
+1) [anonymize_flows.sh (line 96)]anonymize_flows.sh:96 now fails when folders are missing or contain zero flow files.
+
+2) [validate_flows.sh (line 153)]validate_flows.sh:153 now validates preserved fields, distributions, time series, top talkers, IPv4/IPv6 removal, and deterministic mappings.
+
+3) Fixed nfanon key formatting and removed the OpenSSL dependency in [generate_key.sh (line 12)]generate_key.sh:12.
+
+4) Added the full tool comparison in [format_discovery.md (line 83)]docs/format_discovery.md:83.
+
+5) Replaced illustrative validation claims with genuine Docker results in [validation_report.md (line 27)]docs/validation_report.md:27.
+
+6) Expanded privacy/utility evidence in [privacy_risk_summary.md (line 44)]docs/privacy_risk_summary.md:44.
+
+7) Updated README and workflow documentation.
+Verification:
+Zero-input run now exits 1 and reports FAIL.
+Unchanged IP addresses are rejected.
+Docker end-to-end test passed with 5 flows, 59 packets, and 42,128 bytes.
+Local validation also passed.
+Bash syntax and Git whitespace checks passed.
+
+
+## nfgen update 
+
+- Built official nfdump v1.7.3 nfgen.c for Linux ARM64.
+- Installed at /usr/local/bin/nfgen in the running container.
+- Persistent copy saved at .local-tools/nfgen and git-ignored.
+- Updated [make_sample_data.sh (line 24)](/make_sample_data.sh:24) because nfgen always writes test.flows.nf and does not support -w.-
+
+-  saved nfgen in the repo at .local-tools/nfgen, copy it into the container path:
+cp .local-tools/nfgen /usr/local/bin/nfgen

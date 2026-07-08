@@ -41,6 +41,28 @@ fields are preserved and can still leak information:
    preserved prefix structure with the knowledge of other preserved fields can
    re-identify hosts.
 
+## Utility preserved and demonstrated
+
+The Docker validation run demonstrated that the anonymized dataset still
+supports the required research analyses:
+
+| Analysis | Why it still works | Automated evidence |
+|---|---|---|
+| Traffic volume | Packet and byte values are unchanged | Totals and complete value distributions match |
+| Protocol/service analysis | Protocols and ports are unchanged | Protocol and both port distributions match |
+| Time-series analysis | Start/end timestamps are unchanged | Per-minute flow/packet/byte series match |
+| Top-talker analysis | A host receives one stable pseudonym | Ranked source/destination traffic structures match |
+| Subnet-level analysis | CryptoPAn preserves IP prefixes | nfanon method; mapping consistency is checked by the prototype |
+| Connection-behavior analysis | TCP flags and record relationships remain | Required non-IP record fields match exactly |
+
+The same properties that retain utility also retain risk. Stable top-talker
+patterns can fingerprint a known host, timestamps can be correlated with
+outside events, and preserved prefixes reveal network structure. Prefix
+preservation is therefore useful for subnet research but riskier than random,
+non-prefix-preserving pseudonyms. The validator proves consistency and field
+preservation; it does not claim that pseudonymized records are immune to
+re-identification.
+
 ## Key management
 
 - The anonymization key should **never** be committed, shared, documented, printed in
