@@ -37,7 +37,8 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --run)       DRY_RUN=0 ;;
     --dry-run)   DRY_RUN=1 ;;
-    --key-file)  KEY_FILE="$2"; shift ;;
+    --key-file)  [[ $# -ge 2 ]] || { echo "ERROR: --key-file needs a path" >&2; exit 2; }
+                 KEY_FILE="$2"; shift ;;
     -h|--help)
       grep '^#' "$0" | sed 's/^# \{0,1\}//' | head -n 30; exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 2 ;;
@@ -61,10 +62,10 @@ fi
 
 # validate key shape: 32 chars, or 64 hex digits, optionally 0x-prefixed
 klen=${#KEY}
-if [[ "$KEY" =~ ^0x[0-9a-fA-F]{64}$ ]] || [[ "$KEY" =~ ^[0-9a-fA-F]{64}$ ]] || [[ $klen -eq 32 ]]; then
+if [[ "$KEY" =~ ^0x[0-9a-fA-F]{64}$ ]] || [[ $klen -eq 32 ]]; then
   :
 else
-  die "Key must be a 32-character string or a 64-hex-digit string (got length $klen)."
+  die "Key must be a plain 32-character string or a 0x-prefixed 64-hex-digit key (e.g. 0x…)."
 fi
 KEY_FPR="$(printf '%s' "$KEY" | sha256sum | cut -c1-12)"
 

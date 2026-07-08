@@ -2,13 +2,18 @@
 #
 # validate_flows.sh — compare raw vs anonymized flow files.
 #
-# Confirms the anonymization changed ONLY the IP addresses: flow counts,
-# packets, bytes, protocol distribution, and port distribution must be
-# identical, and the original IP addresses must no longer be visible.
+# Confirms nfanon changed ONLY the IP addresses: flow count, packets, bytes,
+# protocol distribution, and destination-port distribution must be identical
+# before and after, and none of the original IP addresses may remain in the
+# anonymized output.
 #
-# Tools: nfdump, coreutils, grep/awk. Bash only.
+# All measurements are computed from `nfdump -o fmt` output (which this script
+# fully controls) rather than by scraping a fixed report layout, so it does not
+# silently pass when parsing fails.
 #
-# Usage:  ./validate_flows.sh            # validate every folder in ./folders
+# Tools: nfdump, coreutils (awk/sort/comm/tr). Bash only.
+#
+# Usage:  ./validate_flows.sh
 #
 set -euo pipefail
 
@@ -18,24 +23,34 @@ FOLDERS_FILE="${FOLDERS_FILE:-folders}"
 FILE_GLOB="${FILE_GLOB:-nfcapd.*}"
 REPORT="${REPORT:-logs/validation.txt}"
 
-# IP prefixes that appear in the sample data (RFC 5737/1918 documentation ranges).
-# If any still appear in the anonymized output, anonymization FAILED.
-RAW_IP_PATTERNS='192\.0\.2\.|198\.51\.100\.|203\.0\.113\.'
-
 command -v nfdump >/dev/null 2>&1 || { echo "ERROR: nfdump not found." >&2; exit 1; }
 mkdir -p "$(dirname "$REPORT")"; : > "$REPORT"
-
 log() { echo "$@" | tee -a "$REPORT"; }
 
-# Pull "Flows/Packets/Bytes + per-proto" from nfdump -I into simple KEY=VALUE lines.
-summary() {  # $1 = file
-  nfdump -r "$1" -I 2>/dev/null | awk -F': *' '
-    /^ *Flows:/        {print "flows="$2}
-    /^ *Flows_tcp:/    {print "tcp="$2}
-    /^ *Flows_udp:/    {print "udp="$2}
-    /^ *Flows_icmp:/   {print "icmp="$2}
-    /^ *Packets:/      {print "packets="$2}
-    /^ *Bytes:/        {print "bytes="$2}'
+# flows / packets / bytes / per-protocol counts, computed from flow records and
+# normalized (sorted) so the before/after strings compare deterministically.
+# -q suppresses header+summary; -N prints plain (unscaled) integers to sum.
+stats() {  # $1 = flow file
+  nfdump -r "$1" -q -N -o 'fmt:%pr %pkt %byt' 2>/dev/null | awk '
+    NF>=3 { flows++; pkts+=$2; bytes+=$3; proto[$1]++ }
+    END {
+      printf "bytes %d\n",   bytes+0
+      printf "flows %d\n",   flows+0
+      printf "packets %d\n", pkts+0
+      for (p in proto) printf "proto_%s %d\n", p, proto[p]
+    }' | sort
+}
+
+# destination-port distribution (flows per port), numerically sorted.
+ports() {  # $1 = flow file
+  nfdump -r "$1" -q -N -o 'fmt:%dp' 2>/dev/null \
+    | awk 'NF { c[$1]++ } END { for (p in c) printf "%s %d\n", p, c[p] }' | sort -n
+}
+
+# sorted unique set of every IP (source and destination) in a file.
+ips() {  # $1 = flow file
+  nfdump -r "$1" -q -N -o 'fmt:%sa %da' 2>/dev/null \
+    | tr -s ' ' '\n' | grep -E '[0-9]' | sort -u
 }
 
 overall_ok=1
@@ -45,9 +60,24 @@ while IFS= read -r folder || [[ -n "$folder" ]]; do
     rel="${src#"$RAW_DIR"/}"; dst="$ANON_DIR/$rel"
     log "==================================================================="
     log "file: $rel"
-    if [[ ! -f "$dst" ]]; then log "  MISSING anonymized file: $dst"; overall_ok=0; continue; fi
+    if [[ ! -f "$dst" ]]; then
+      log "  MISSING anonymized file: $dst                                 [FAIL]"
+      overall_ok=0; continue
+    fi
 
-    before="$(summary "$src")"; after="$(summary "$dst")"
+    before="$(stats "$src" || true)"
+    after="$(stats "$dst" || true)"
+
+    # Guard: awk's END block prints "flows 0" even for zero input, so a mere
+    # "flows" line is not proof of a successful read. Require flows > 0, else
+    # FAIL loudly (never a silent pass on an unreadable/empty file).
+    before_flows="$(awk '/^flows /{print $2+0; exit}' <<<"$before")"
+    if [[ "${before_flows:-0}" -eq 0 ]]; then
+      log "  ERROR: read 0 flows from $src — unreadable or empty nfcapd file"
+      log "         (try:  nfdump -r \"$src\" -I  to inspect it directly)"
+      overall_ok=0; continue
+    fi
+
     log "  BEFORE : $(echo "$before" | tr '\n' ' ')"
     log "  AFTER  : $(echo "$after"  | tr '\n' ' ')"
     if [[ "$before" == "$after" ]]; then
@@ -57,22 +87,34 @@ while IFS= read -r folder || [[ -n "$folder" ]]; do
       overall_ok=0
     fi
 
-    # Port distribution (should also be identical; show top ports).
-    log "  dst-port distribution (anon):"
-    nfdump -r "$dst" -s dstport/flows -n 0 2>/dev/null \
-      | awk 'NR>1 && $1 ~ /[0-9]/ {print "     "$0}' | head -10 | tee -a "$REPORT" >/dev/null
+    # Destination-port distribution must also be identical.
+    if [[ "$(ports "$src" || true)" == "$(ports "$dst" || true)" ]]; then
+      log "  ports  : destination-port distribution preserved              [PASS]"
+    else
+      log "  ports  : destination-port distribution CHANGED                [FAIL]"
+      overall_ok=0
+    fi
+    log "  dst ports (before): $(ports "$src" | tr '\n' ' ')"
 
-    # Real IPs must be gone.
-    if nfdump -r "$dst" -o csv 2>/dev/null | grep -Eq "$RAW_IP_PATTERNS"; then
-      log "  real IPs visible in anon output: YES                          [FAIL]"
+    # No original IP may survive into the anonymized output. Compare the actual
+    # IP sets (works for any address ranges present, not just hard-coded ones).
+    orig_ips="$(ips "$src" || true)"
+    anon_ips="$(ips "$dst" || true)"
+    leaked="$(comm -12 <(printf '%s\n' "$orig_ips") <(printf '%s\n' "$anon_ips") | grep -E '[0-9]' || true)"
+    if [[ -n "$leaked" ]]; then
+      log "  IPs    : original address(es) STILL VISIBLE: $(echo "$leaked" | tr '\n' ' ')  [FAIL]"
       overall_ok=0
     else
-      log "  real IPs visible in anon output: No                           [PASS]"
+      log "  IPs    : no original IP addresses remain in anon output        [PASS]"
     fi
   done < <(find "$RAW_DIR/$folder" -type f -name "$FILE_GLOB" | sort)
 done < "$FOLDERS_FILE"
 
 log "==================================================================="
-log "OVERALL: $([[ $overall_ok -eq 1 ]] && echo 'PASS — utility preserved, IPs anonymized' || echo 'FAIL — see above')"
+if [[ $overall_ok -eq 1 ]]; then
+  log "OVERALL: PASS — utility preserved, IPs anonymized"
+else
+  log "OVERALL: FAIL — see above"
+fi
 log "report written to $REPORT"
 [[ $overall_ok -eq 1 ]]
