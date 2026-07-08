@@ -72,7 +72,7 @@ generate_with_nfgen() {
   mv "$generated" "$output"
   rm -rf "$work_dir"
   echo "generated $output ($flows nfgen test records)"
-  echo "verified with: nfdump -r $output -I"
+  echo "verified by exporting $flows readable records with nfdump"
 }
 
 # PAYLOAD contains printable \xHH escapes. Keeping the encoded packet in a
@@ -150,7 +150,7 @@ build_netflow_v5_packet() {
 }
 
 generate_with_nfcapd() {
-  command -v nfcapd >/dev/null 2>&1 || die "nfgen is absent and nfcapd is not installed. Install the Ubuntu nfdump package."
+  command -v nfcapd >/dev/null 2>&1 || die "nfgen is absent and nfcapd is not installed. Install the Debian nfdump package."
   command -v nfdump >/dev/null 2>&1 || die "nfdump is required to verify the generated sample."
   [[ -x /usr/bin/printf ]] || die "the coreutils /usr/bin/printf command is required for the binary UDP write"
 
@@ -213,7 +213,7 @@ generate_with_nfcapd() {
   mkdir -p "$(dirname "$output")"
   mv "$valid_file" "$output"
   echo "generated $output ($flows synthetic records)"
-  echo "verified with: nfdump -r $output -I"
+  echo "verified by exporting $flows readable records with nfdump"
 
   trap - EXIT INT TERM
   cleanup

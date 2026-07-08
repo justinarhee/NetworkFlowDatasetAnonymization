@@ -45,8 +45,13 @@ nfdump -r raw/2026-01/2026-01-01/nfcapd.202601010000 -o extended | head
 **2. Inspect the fields.**
 ```
 nfdump -r raw/2026-01/2026-01-01/nfcapd.202601010000 -o extended
-nfdump -r raw/2026-01/2026-01-01/nfcapd.202601010000 -I        # stats
+nfdump -q -N -r raw/2026-01/2026-01-01/nfcapd.202601010000 -o 'fmt:%cnt' |
+  awk 'NF { count++ } END { print "Readable records:", count + 0 }'
 ```
+
+`nfgen` fixtures intentionally leave nfdump's internal summary counters at
+zero, so `nfdump -I` is not used to count them. The command above counts the
+records nfdump can actually export; `validate_flows.sh` uses the same approach.
 
 **3. Create the key (never committed).**
 ```

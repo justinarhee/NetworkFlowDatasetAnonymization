@@ -90,18 +90,16 @@ An illustrative record set (documentation only, real input is the binary
 | **nfpcapd** | Reads packet captures or an interface | Yes | Packet metadata → nfdump flows | No | Can create approved test input | Optional fallback; packet payloads are not retained or shared |
 | **sfcapd** | No | Yes: sFlow | sFlow samples → nfdump format | No | Output can be checked with nfdump | Use only if discovery identifies sFlow input |
 | **ft2nfdump / flow-tools** | Reads legacy flow-tools data | No | flow-tools → nfdump | No | Converted output can be checked with nfdump | Not required: discovery confirmed nfdump, not legacy flow-tools |
-| **nfgen** | No | Generates nfdump test records | No | No | Useful for deterministic test fixtures | Optional development helper; not shipped by every Ubuntu nfdump package |
+| **nfgen** | No | Generates nfdump test records | No | No | Useful for deterministic test fixtures | Optional development helper; not shipped by Debian's nfdump package |
 
 ### Test evidence
 
-The completed Docker test used Ubuntu, `nfdump 1.7.3`, `nfcapd`, and `nfanon`.
-`nfcapd` collected five synthetic NetFlow v5 records, `nfdump` read all five,
-and `nfanon` produced a separate nfdump file accepted by the expanded
-validator. The local package did not include `nfgen`, confirming that it must
-be checked separately rather than assumed to come with `apt install nfdump`.
-For compatibility testing, `nfgen` was then built from the official nfdump
-`v1.7.3` tag for Linux ARM64 and stored locally at `.local-tools/nfgen`
-(git-ignored). Its 20-record fixture completed anonymization and validation.
+The completed Docker test uses Debian 12 (Bookworm), Debian's nfdump 1.7.1
+package, and `nfgen` built from the official nfdump `v1.7.3` tag. Debian's
+package supplies `nfdump`, `nfcapd`, and `nfanon`, but not `nfgen`, so the
+project Dockerfile builds that utility in a separate builder stage. Its
+20-record IPv4/IPv6 fixture completed anonymization and every validation check;
+flow, packet, and byte totals remained 20, 466, and 117,760 respectively.
 
 **Recommendation:** keep the production prototype to Bash + nfdump + nfanon.
 Use nfcapd only for approved synthetic collection and conversion utilities only

@@ -63,6 +63,9 @@ analysis and hardening options.
 ```
 .
 ├── README.md                     # this page
+├── Dockerfile                    # reproducible Debian image; builds nfgen
+├── .dockerignore                 # excludes local data/secrets from build context
+├── workflow.txt                  # complete Debian Docker commands
 ├── folders                       # month folders to process (e.g. 2026-01)
 ├── generate_key.sh               # create a local nfanon key (0600, git-ignored)
 ├── make_sample_data.sh           # populate raw/ with sample nfcapd.* files
@@ -82,21 +85,25 @@ analysis and hardening options.
 
 ## Quick start — Testing
 
-**Prerequisites (Ubuntu):** install the nfdump suite, which provides
-`nfdump`, `nfanon`, `nfcapd`, and `sfcapd`. Ubuntu does not package the
-optional `nfgen` test utility. A locally built Linux ARM64 copy can live at
-`.local-tools/nfgen`; otherwise the prototype uses its nfcapd fallback.
+**Prerequisites (macOS):** Docker and Colima. The project image is based on
+Debian Bookworm and builds the official nfdump v1.7.3 `nfgen` utility in a
+separate builder stage. The runtime image contains `nfdump`, `nfanon`,
+`nfcapd`, and `nfgen`.
 
 ```bash
-sudo apt-get update && sudo apt-get install -y nfdump
-nfdump -V       # confirming installation and version
+colima start
+docker build --platform linux/arm64 -t flow-anonymizer:debian .
+docker run --rm -it --platform linux/arm64 \
+  -v "$PWD":/work -w /work flow-anonymizer:debian
 ```
 
-**Clone and run the full workflow:**
+**Inside the Debian container:**
 
 ```bash
-git clone https://github.com/justinarhee/NetworkFlowDatasetAnonymization.git
-cd NetworkFlowDatasetAnonymization
+cat /etc/os-release
+nfdump -V
+command -v nfanon
+command -v nfgen
 
 # 1) create a local anonymization key (should never be committed)
 ./generate_key.sh                       #  or: export NFANON_KEY=<32-char-or-64-hex>
@@ -120,10 +127,10 @@ nfdump -r raw/2026-01/2026-01-01/nfcapd.202601010000 -o extended | head
 If you have `nfcapd.*` files to use as the dataset to be anonymized, add them into
 `raw/<month>/<date>/` and add the `<month>` to the `folders` file. Steps 4–6 are unchanged.
 
-> **Note:** `nfdump`/`nfanon` are not bundled here as they are separately
-> licensed. Without `nfgen`, `make_sample_data.sh` automatically sends five
-> synthetic NetFlow v5 records to a temporary local `nfcapd` collector and
-> retains exactly one verified, non-empty nfdump file.
+> **Note:** `nfdump`/`nfanon` are separately licensed. `nfgen` is compiled
+> from the official nfdump source during `docker build`; it is not downloaded
+> as an unverified third-party binary. See `workflow.txt` for the full command
+> sequence.
 
 ---
 
@@ -137,8 +144,9 @@ raw/ (nfdump binary)          anon/ (nfdump binary, IPs pseudonymized)
  for each nfcapd.* file  ──►  nfanon -K <key> -r <in> -w <out>  ──►  anon/<same path>
    │                              (CryptoPAn, prefix-preserving, IP fields only)
    ▼
- validate:  nfdump -r <in>  -I     vs     nfdump -r <out> -I     → counts must match
-            nfdump -r <out> -o csv | grep <known real IP ranges> → must be empty
+ validate:  export normalized records from raw and anon with nfdump
+            compare preserved fields, distributions, time series, and top talkers
+            derive every original IP and verify changed, deterministic mappings
 ```
 
 The prototype loops **file-by-file** with `nfanon -r/-w` specifically so the
@@ -156,16 +164,17 @@ directory tree is preserved.
 
 ---
 
-## Validation results (sample dataset)
+## Validation results (Debian nfgen sample)
 
 | Metric | Before | After |
 |---|---|---|
-| Flow records | 5 | 5 |
-| Total packets | 59 | 59 |
-| Total bytes | 42,128 | 42,128 |
-| Protocols | TCP=3, UDP=1, ICMP=1 | TCP=3, UDP=1, ICMP=1 |
-| Dest ports | 443, 22, 53, 80, 0 | 443, 22, 53, 80, 0 |
-| Real IPs visible | yes | **No** |
+| Flow records | 20 | 20 |
+| Total packets | 466 | 466 |
+| Total bytes | 117,760 | 117,760 |
+| Preserved record fields | Baseline | Identical |
+| Distributions and time series | Baseline | Identical |
+| Source/destination top-talker structure | Baseline | Identical |
+| Original IPs visible | Yes | **No** |
 
 Prefix preservation is visible in the results: a source that appears in two
 flows maps to the **same** pseudonym both times, and adjacent source addresses

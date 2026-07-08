@@ -24,18 +24,18 @@ the raw data rather than from hard-coded prefixes, so the check covers both
 IPv4 and IPv6. The mapping check confirms that each original address maps to
 one changed pseudonym and that no two originals collide in the tested data.
 
-## Genuine Docker test result
+## Genuine Debian Docker test result
 
-Tested July 7, 2026 using Ubuntu, nfdump/nfanon 1.7.3, and five synthetic
-NetFlow v5 records collected by nfcapd. Raw, anonymized, key, and log artifacts
-remain git-ignored.
+Tested July 8, 2026 using Debian 12 (Bookworm), Debian's nfdump/nfanon 1.7.1
+package, and `nfgen` built from the official nfdump v1.7.3 source tag. Raw,
+anonymized, key, and log artifacts remain git-ignored.
 
 | Check | Before | After | Result |
 |---|---:|---:|---|
-| Flow records | 5 | 5 | PASS |
-| Total packets | 59 | 59 | PASS |
-| Total bytes | 42,128 | 42,128 | PASS |
-| Protocols | TCP=3, UDP=1, ICMP=1 | Same | PASS |
+| Flow records | 20 | 20 | PASS |
+| Total packets | 466 | 466 | PASS |
+| Total bytes | 117,760 | 117,760 | PASS |
+| Protocols | Baseline | Identical | PASS |
 | Preserved record fields | Baseline | Identical | PASS |
 | Packet/byte distributions | Baseline | Identical | PASS |
 | Source/destination port distributions | Baseline | Identical | PASS |
@@ -48,8 +48,8 @@ Automated output:
 
 ```text
 input files discovered: 1
-BEFORE: flows=5, packets=59, bytes=42128
-AFTER : flows=5, packets=59, bytes=42128
+BEFORE: flows=20, packets=466, bytes=117760
+AFTER : flows=20, packets=466, bytes=117760
 record count and packet/byte totals: identical [PASS]
 all preserved record fields (time/protocol/ports/packets/bytes/TCP flags): identical [PASS]
 packet distribution: identical [PASS]
@@ -68,12 +68,10 @@ OVERALL: PASS — required utility preserved and all IP fields pseudonymized
 Exact pseudonyms are intentionally omitted: they depend on the secret key and
 are unnecessary for demonstrating the checks.
 
-### nfgen compatibility run
-
-The official nfdump `v1.7.3` nfgen test utility was also compiled for Linux
-ARM64 and exercised through the same workflow. It generated 20 readable test
-records containing IPv4 and IPv6 extensions. Before and after totals were 20
-records, 466 packets, and 117,760 bytes; every validation check passed.
+The official nfdump `v1.7.3` nfgen utility generated 20 readable test records
+containing IPv4 and IPv6 extensions. The Debian 1.7.1 tools read, anonymized,
+and validated this fixture successfully, confirming compatibility between the
+builder output and runtime package.
 
 ## Reproduce the validation
 

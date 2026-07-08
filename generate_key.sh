@@ -10,7 +10,7 @@ if [[ -f "$KEY_FILE" ]]; then
   echo "Key already exists at $KEY_FILE (refusing to overwrite)."; exit 0
 fi
 # 32 random bytes -> 64 hex chars. nfanon requires the 0x prefix for this form.
-# od and /dev/urandom are available in a minimal Ubuntu environment, avoiding
+# od and /dev/urandom are available in the Debian container, avoiding
 # an otherwise unnecessary OpenSSL package dependency.
 HEX_KEY="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
 [[ "$HEX_KEY" =~ ^[0-9a-fA-F]{64}$ ]] || { echo "Failed to generate 32 random bytes." >&2; exit 1; }
