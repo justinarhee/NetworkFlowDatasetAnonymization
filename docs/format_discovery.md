@@ -80,17 +80,32 @@ An illustrative record set (documentation only, real input is the binary
 | **Sensitive (identifying)** | src_ip, dst_ip, next_hop_ip, router/exporter IP | **anonymize** with nfanon |
 | **Preserved (needed for analysis)** | time, protocol, src_port, dst_port, packets, bytes, TCP flags | **keep unchanged** |
 
-## Tools tested
+## Tool research and recommendation
 
-| Tool | Result |
-|---|---|
-| **nfdump** | reads the binary files; exports fields as text/CSV; prints statistics (`-I`, `-s`) — **works** |
-| **nfanon** | anonymizes all IP fields with prefix-preserving CryptoPAn — **works** |
-| **nfcapd** | used only to collect/generate sample data|
+| Tool | Read / inspect | Collect | Convert | Anonymize | Validate | Decision |
+|---|---|---|---|---|---|---|
+| **nfdump** | Yes: binary, text, CSV, JSON, statistics | No | Can rewrite filtered nfdump files | No | Yes: records, totals, distributions, aggregations | **Use** as the reader and validation engine |
+| **nfcapd** | No | Yes: NetFlow v5/v9 and IPFIX exporters | Collector output is already nfdump format | No | Supplies controlled synthetic input | **Use when synthetic exporter traffic must be collected** |
+| **nfanon** | Reads nfdump input for rewriting | No | nfdump → anonymized nfdump | Yes: CryptoPAn IP pseudonymization | No analytical checks | **Use** as the anonymizer |
+| **nfpcapd** | Reads packet captures or an interface | Yes | Packet metadata → nfdump flows | No | Can create approved test input | Optional fallback; packet payloads are not retained or shared |
+| **sfcapd** | No | Yes: sFlow | sFlow samples → nfdump format | No | Output can be checked with nfdump | Use only if discovery identifies sFlow input |
+| **ft2nfdump / flow-tools** | Reads legacy flow-tools data | No | flow-tools → nfdump | No | Converted output can be checked with nfdump | Not required: discovery confirmed nfdump, not legacy flow-tools |
+| **nfgen** | No | Generates nfdump test records | No | No | Useful for deterministic test fixtures | Optional development helper; not shipped by every Ubuntu nfdump package |
 
-**Conclusion:** the format is confirmed nfdump binary; nfdump reads it and
-nfanon anonymizes it. The prototype workflow (Phase 3) is built on these two
-tools along with Bash.
+### Test evidence
+
+The completed Docker test used Ubuntu, `nfdump 1.7.3`, `nfcapd`, and `nfanon`.
+`nfcapd` collected five synthetic NetFlow v5 records, `nfdump` read all five,
+and `nfanon` produced a separate nfdump file accepted by the expanded
+validator. The local package did not include `nfgen`, confirming that it must
+be checked separately rather than assumed to come with `apt install nfdump`.
+For compatibility testing, `nfgen` was then built from the official nfdump
+`v1.7.3` tag for Linux ARM64 and stored locally at `.local-tools/nfgen`
+(git-ignored). Its 20-record fixture completed anonymization and validation.
+
+**Recommendation:** keep the production prototype to Bash + nfdump + nfanon.
+Use nfcapd only for approved synthetic collection and conversion utilities only
+when format discovery shows they are necessary.
 
 ## Supplementary: the nfdump suite
 
