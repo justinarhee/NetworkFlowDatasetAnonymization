@@ -6,12 +6,8 @@
 #   Pseudonymize the IP fields of nfdump binary flow files using nfanon
 #   (CryptoPAn, prefix-preserving), writing the results into a separate anon/
 #   tree that mirrors raw/. Every non-IP field (time, protocol, ports, packet
-#   and byte counts, TCP flags) is left byte-for-byte identical, so downstream
-#   traffic analysis is unaffected. The original raw/ files are never modified.
-#
-# WHAT IT ANONYMIZES / PRESERVES
-#   Anonymized by nfanon : source IP, destination IP, next-hop IP, router/exporter IP
-#   Preserved unchanged  : time, protocol, src/dst ports, packets, bytes, TCP flags
+#   and byte counts, TCP flags) is left identical, so downstream traffic 
+#   analysis is unaffected. The original raw/ files are never modified.
 #
 # INPUT (which files get processed) — resolved in this priority order:
 #   1. PATH TARGET(S) given on the command line (files or directories). Only
