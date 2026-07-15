@@ -1,13 +1,13 @@
-# Validation Report
+# validation_report.md
 
-**CIARA/FIU Flow Dataset Anonymization Prototype — Phase 4**
+**CIARA/FIU Flow Dataset Anonymization Prototype — Phase 4: Validation**
 
 ## Validation policy
 
-`validate_flows.sh` must prove that the required analytical data is unchanged
-and every IP field is pseudonymized. It fails—not passes—when a listed folder
-is missing, no `nfcapd.*` files are found, an anonymized counterpart is
-missing, nfdump cannot read a file, or any comparison differs.
+`validate_flows.sh` must prove that the required analytical data is unchanged and
+that every IP field is pseudonymized. It **fails** (does not pass) when a listed
+folder is missing, no `nfcapd.*` files are found, an anonymized counterpart is
+missing, `nfdump` cannot read a file, or any comparison differs.
 
 For every raw/anonymized file pair it compares:
 
@@ -18,17 +18,17 @@ For every raw/anonymized file pair it compares:
 - per-minute flow, packet, and byte time series.
 
 Across the complete dataset it also compares source and destination top-talker
-traffic structure and validates all source, destination, next-hop, BGP
-next-hop, and router/exporter IP fields. Original addresses are derived from
-the raw data rather than from hard-coded prefixes, so the check covers both
-IPv4 and IPv6. The mapping check confirms that each original address maps to
-one changed pseudonym and that no two originals collide in the tested data.
+structure and validates all source, destination, next-hop, and router/exporter IP
+fields. Original addresses are derived from the raw data rather than from
+hard-coded prefixes, so the check covers both IPv4 and IPv6. The mapping check
+confirms that each original address maps to one changed pseudonym and that no two
+originals collide in the tested data.
 
-## Genuine Docker test result
+## Docker test result (Bash + nfcapd sample)
 
-Tested July 7, 2026 using Ubuntu, nfdump/nfanon 1.7.3, and five synthetic
-NetFlow v5 records collected by nfcapd. Raw, anonymized, key, and log artifacts
-remain git-ignored.
+Tested July 7, 2026 on Ubuntu with `nfdump`/`nfanon` 1.7.3 and the five synthetic
+NetFlow v5 records produced by the built-in `nfcapd` fallback. Raw, anonymized,
+key, and log artifacts remain git-ignored.
 
 | Check | Before | After | Result |
 |---|---:|---:|---|
@@ -42,11 +42,12 @@ remain git-ignored.
 | Per-minute time series | Baseline | Identical | PASS |
 | Source/destination top-talker structure | Baseline | Identical | PASS |
 | Original IPs visible | Yes | No | PASS |
-| Deterministic, collision-free mapping | N/A | Confirmed in tested data | PASS |
+| Deterministic, collision-free mapping | N/A | Confirmed | PASS |
 
 Automated output:
 
 ```text
+scope: folders file: folders
 input files discovered: 1
 BEFORE: flows=5, packets=59, bytes=42128
 AFTER : flows=5, packets=59, bytes=42128
@@ -65,12 +66,12 @@ IP pseudonyms are changed, deterministic, and collision-free across the dataset 
 OVERALL: PASS — required utility preserved and all IP fields pseudonymized
 ```
 
-Exact pseudonyms are intentionally omitted: they depend on the secret key and
-are unnecessary for demonstrating the checks.
+Exact pseudonyms are intentionally omitted: they depend on the secret key and are
+unnecessary for demonstrating the checks.
 
-### nfgen compatibility run
+## nfgen compatibility run
 
-The official nfdump `v1.7.3` nfgen test utility was also compiled for Linux
+The official nfdump `v1.7.3` `nfgen` test utility was also compiled for Linux
 ARM64 and exercised through the same workflow. It generated 20 readable test
 records containing IPv4 and IPv6 extensions. Before and after totals were 20
 records, 466 packets, and 117,760 bytes; every validation check passed.
@@ -78,12 +79,12 @@ records, 466 packets, and 117,760 bytes; every validation check passed.
 ## Reproduce the validation
 
 ```bash
-./anonymize_flows.sh          # preflight + dry run
+./anonymize_flows.sh          # preflight + dry-run
 ./anonymize_flows.sh --run
 ./validate_flows.sh
 cat logs/validation.txt
 ```
 
-The generated `logs/validation.txt` is the authoritative report for the
-current local dataset. It is deliberately ignored by Git because it can
-contain internal paths.
+The generated `logs/validation.txt` is the authoritative report for the current
+local dataset. It is deliberately git-ignored because it can contain internal
+paths.

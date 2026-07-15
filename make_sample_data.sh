@@ -1,73 +1,133 @@
 #!/usr/bin/env bash
-# make_sample_data.sh — create nfdump binary (nfcapd) flow files.
 #
-# Three generation methods, chosen automatically:
-#   1. From a USER-PROVIDED PCAP (a pcap path given as an argument, or PCAP=...):
-#      convert real packets to flow records with nfpcapd, written under DEST.
-#   2. nfgen — preferred synthetic path when the optional nfdump test utility is
-#      installed, provided via NFGEN_BIN, or bundled in ./.local-tools/nfgen.
-#   3. Bash + nfcapd fallback — portable: craft one synthetic NetFlow v5 datagram
-#      in pure Bash, send it to a short-lived nfcapd collector over UDP, and keep
-#      the resulting non-empty nfdump file. No Python, Perl, packet capture,
-#      payload data, or external download required.
+# make_sample_data.sh — CIARA/FIU Flow Dataset Anonymization Prototype
+# ============================================================================
+# PURPOSE
+#   Produce nfdump binary (nfcapd.*) flow files for the prototype to anonymize.
+#   It creates either (a) real flow files converted from one or more packet
+#   captures you supply, or (b) synthetic, non-sensitive sample flows when no
+#   capture is given — so the pipeline can always be exercised end to end.
 #
-# Usage:
-#   ./make_sample_data.sh                        # synthetic (nfgen, else nfcapd)
-#   ./make_sample_data.sh capture.pcap           # convert a pcap (default dest)
-#   ./make_sample_data.sh capture.pcap DEST_DIR  # convert a pcap into DEST_DIR
+# INPUT (chooses a method automatically, in this order):
+#   1. USER-PROVIDED PCAP(S) — one or more .pcap/.pcapng paths and/or directories
+#      passed as arguments (or via PCAP="a.pcap b.pcap"). Each capture is
+#      converted to flow records with nfpcapd. Directories are searched
+#      (non-recursively at find default: recursively) for *.pcap/*.pcapng.
+#   2. nfgen — the optional nfdump test-record generator, if installed, given via
+#      NFGEN_BIN, or bundled as a Linux ARM64 binary at ./.local-tools/nfgen.
+#   3. Bash + nfcapd FALLBACK — fully portable: craft one synthetic NetFlow v5
+#      datagram in pure Bash (5 records, 59 packets, 42,128 bytes; TCP=3/UDP=1/
+#      ICMP=1), send it to a short-lived local nfcapd collector over UDP, and
+#      keep the resulting non-empty nfdump file. No Python/Perl, no packet
+#      capture, no payloads, no downloads.
 #
-# Environment overrides: RAW_DIR, DEST, PCAP, COLLECT_PORT, NFGEN_BIN, TMPDIR.
-# (DEST applies to the pcap method; the synthetic methods write the fixed
-#  sample path under RAW_DIR.)
+# OUTPUT
+#   * PCAP method : DEST/<pcap-basename>/nfcapd.*  (one subdir per capture, so
+#                   multiple captures never overwrite each other). DEST defaults
+#                   to RAW_DIR (raw/). Each converted file is verified readable
+#                   by nfdump and its record count is printed.
+#   * Synthetic   : RAW_DIR/2026-01/2026-01-01/nfcapd.202601010000
+#                   (a fixed, documented sample path).
+#   Existing non-empty synthetic targets are never overwritten.
+#
+# WORKFLOW
+#   detect inputs -> pick method -> generate/convert -> verify with nfdump ->
+#   report where files landed. Next step is ./anonymize_flows.sh.
+#
+# USAGE
+#   ./make_sample_data.sh                          # synthetic (nfgen, else nfcapd)
+#   ./make_sample_data.sh capture.pcap             # convert one capture
+#   ./make_sample_data.sh a.pcap b.pcapng c.pcap   # convert several captures
+#   ./make_sample_data.sh /path/to/pcap_dir        # convert every *.pcap/*.pcapng in a dir
+#   PCAP="a.pcap b.pcap" ./make_sample_data.sh     # same, via environment
+#   DEST=raw/captured ./make_sample_data.sh a.pcap # choose the output root
+#
+# ENVIRONMENT OVERRIDES
+#   RAW_DIR (raw)   DEST (output root for the pcap method; defaults to RAW_DIR)
+#   PCAP (space-separated capture list)   COLLECT_PORT (29995, nfcapd fallback)
+#   NFGEN_BIN (path to an nfgen binary)   TMPDIR
+#   NOTE: DEST is now environment-only; every positional argument is treated as
+#         a capture input so that multiple captures can be passed at once.
+#
+# REQUIRES: nfdump; plus nfpcapd (pcap method) or nfcapd (fallback). Bash only.
+# ============================================================================
 set -euo pipefail
 
 RAW_DIR="${RAW_DIR:-raw}"
+DEST="${DEST:-$RAW_DIR}"
 COLLECT_PORT="${COLLECT_PORT:-29995}"
 FALLBACK_TARGET="2026-01/2026-01-01/nfcapd.202601010000"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 NFGEN_BIN="${NFGEN_BIN:-}"
 
-# pcap-conversion inputs; positional args take precedence over environment.
-PCAP_INPUT="${1:-${PCAP:-}}"
-DEST="${2:-${DEST:-$RAW_DIR/2026-01/2026-01-01}}"
-
 case "${1:-}" in
   -h|--help)
-    grep '^#' "$0" | grep -v '^#!' | sed 's/^# \{0,1\}//' | sed -n '1,22p'
+    grep '^#' "$0" | grep -v '^#!' | sed 's/^# \{0,1\}//' | sed -n '1,50p'
     exit 0
     ;;
 esac
 
+# Gather capture inputs: positional args take precedence over the PCAP env var.
+declare -a PCAP_INPUTS=()
+if [[ $# -gt 0 ]]; then
+  PCAP_INPUTS=("$@")
+elif [[ -n "${PCAP:-}" ]]; then
+  read -r -a PCAP_INPUTS <<< "$PCAP"
+fi
+
 die() { echo "ERROR: $*" >&2; exit 1; }
 flow_count() {
-  # nfgen intentionally leaves its summary counters at zero, so count the
-  # records nfdump can actually export instead of trusting `nfdump -I`.
+  # nfgen leaves its summary counters at zero, so count the records nfdump can
+  # actually export instead of trusting `nfdump -I`.
   nfdump -q -N -r "$1" -o 'fmt:%cnt' 2>/dev/null |
     awk 'NF { count++ } END { print count + 0 }' || true
 }
 
-# ---- method 1: convert a user-provided pcap with nfpcapd -------------------
+# ---- method 1: convert one or more user-provided pcaps with nfpcapd ---------
 generate_with_pcap() {
   command -v nfpcapd >/dev/null 2>&1 || die "nfpcapd not found. Install the nfdump suite: sudo apt-get install nfdump"
   command -v nfdump  >/dev/null 2>&1 || die "nfdump is required to verify the converted output."
-  [[ -f "$PCAP_INPUT" ]] || die "pcap not found: '$PCAP_INPUT' (pass a real .pcap/.pcapng file)."
 
-  mkdir -p "$DEST"
-  echo "Converting '$PCAP_INPUT' -> nfcapd files under '$DEST' ..."
-  nfpcapd -r "$PCAP_INPUT" -w "$DEST"
-
-  shopt -s nullglob
-  local files=("$DEST"/nfcapd.*)
-  (( ${#files[@]} > 0 )) || die "no nfcapd.* files were produced — check the nfpcapd output above."
-
-  local total=0 f flows
-  for f in "${files[@]}"; do
-    flows="$(flow_count "$f")"
-    total=$(( total + ${flows:-0} ))
-    echo "  $f ($flows records)"
+  # Expand inputs: files as-is; directories -> their *.pcap/*.pcapng contents.
+  local -a pcaps=()
+  local item p
+  for item in "${PCAP_INPUTS[@]}"; do
+    if [[ -d "$item" ]]; then
+      while IFS= read -r -d '' p; do pcaps+=("$p"); done \
+        < <(find "$item" -type f \( -iname '*.pcap' -o -iname '*.pcapng' \) -print0)
+    elif [[ -f "$item" ]]; then
+      pcaps+=("$item")
+    else
+      die "pcap input not found: '$item' (pass .pcap/.pcapng files or a directory of them)."
+    fi
   done
-  (( total > 0 )) || die "converted files contain no readable flows."
-  echo "Created ${#files[@]} file(s), $total total records under $DEST"
+  (( ${#pcaps[@]} > 0 )) || die "no .pcap/.pcapng files found in the given input(s)."
+
+  local grand_total=0 pcap base out_dir total f flows
+  local -a files
+  for pcap in "${pcaps[@]}"; do
+    base="$(basename -- "$pcap")"; base="${base%.*}"
+    out_dir="$DEST/$base"
+    mkdir -p "$out_dir"
+    echo "Converting '$pcap' -> nfcapd files under '$out_dir' ..."
+    nfpcapd -r "$pcap" -w "$out_dir"
+
+    shopt -s nullglob
+    files=("$out_dir"/nfcapd.*)
+    shopt -u nullglob
+    (( ${#files[@]} > 0 )) || die "no nfcapd.* files were produced for '$pcap' — check the nfpcapd output above."
+
+    total=0
+    for f in "${files[@]}"; do
+      flows="$(flow_count "$f")"
+      total=$(( total + ${flows:-0} ))
+      echo "  $f ($flows records)"
+    done
+    (( total > 0 )) || die "converted files for '$pcap' contain no readable flows."
+    grand_total=$(( grand_total + total ))
+    echo "  -> ${#files[@]} file(s), $total record(s) under $out_dir"
+  done
+  echo "Converted ${#pcaps[@]} pcap(s) into nfcapd files under $DEST/ ($grand_total total record(s))."
 }
 
 resolve_nfgen() {
@@ -101,8 +161,8 @@ generate_with_nfgen() {
     die "existing target has no readable flows: $output (move it aside and retry)"
   fi
 
-  # nfgen is an upstream test binary, not a normal installed CLI. Version
-  # 1.7.3 accepts no output option and always creates ./test.flows.nf.
+  # nfgen is an upstream test binary, not a normal installed CLI. Version 1.7.3
+  # accepts no output option and always creates ./test.flows.nf.
   work_dir="$(mktemp -d "${TMPDIR:-/tmp}/nfgen-sample.XXXXXX")"
   echo "using nfgen: $NFGEN_BIN"
   if ! (cd "$work_dir" && "$NFGEN_BIN"); then
@@ -124,9 +184,9 @@ generate_with_nfgen() {
   echo "verified by exporting $flows readable records with nfdump"
 }
 
-# PAYLOAD contains printable \xHH escapes. Keeping the encoded packet in a
-# Bash variable avoids NUL-byte limitations; one final printf emits the entire
-# UDP datagram in a single write.
+# PAYLOAD holds printable \xHH escapes. Keeping the encoded packet in a Bash
+# variable avoids NUL-byte limitations; one final printf emits the whole UDP
+# datagram in a single write.
 PAYLOAD=""
 append_byte() {
   local hex
@@ -199,7 +259,7 @@ build_netflow_v5_packet() {
 }
 
 generate_with_nfcapd() {
-  command -v nfcapd >/dev/null 2>&1 || die "nfgen is absent and nfcapd is not installed. Install the Debian nfdump package."
+  command -v nfcapd >/dev/null 2>&1 || die "nfgen is absent and nfcapd is not installed. Install the nfdump package."
   command -v nfdump >/dev/null 2>&1 || die "nfdump is required to verify the generated sample."
   [[ -x /usr/bin/printf ]] || die "the coreutils /usr/bin/printf command is required for the binary UDP write"
 
@@ -268,13 +328,11 @@ generate_with_nfcapd() {
   cleanup
 }
 
-# ---- dispatch: pcap (if provided) > nfgen > nfcapd fallback ----------------
-if [[ -n "$PCAP_INPUT" ]]; then
+# ---- dispatch: pcap(s) if provided > nfgen > nfcapd fallback ----------------
+if [[ ${#PCAP_INPUTS[@]} -gt 0 ]]; then
   generate_with_pcap
 elif resolve_nfgen; then
   generate_with_nfgen
 else
   generate_with_nfcapd
 fi
-
-echo "Done. Next: ./anonymize_flows.sh"
