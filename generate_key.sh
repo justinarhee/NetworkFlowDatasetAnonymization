@@ -4,8 +4,7 @@
 # ============================================================================
 # PURPOSE
 #   Create (or rotate) the local CryptoPAn key that nfanon uses to pseudonymize
-#   IP fields. The key is 32 random bytes rendered as "0x" + 64 hex digits — the
-#   exact form anonymize_flows.sh and nfanon expect.
+#   IP fields. The key is 32 random bytes rendered as "0x" + 64 hex digits.
 #
 # INPUT
 #   --force, -f   replace an existing key (rotates it). Without it, an existing
@@ -14,10 +13,10 @@
 #   KEY_FILE      environment override for the output path (default secret/anon.key).
 #
 # OUTPUT
-#   Writes the key to $KEY_FILE with permissions 600 inside a 0700 secret dir,
-#   and prints ONLY a short sha256 fingerprint of the key (safe to share); the
-#   key itself is never printed. This fingerprint matches the one logged by
-#   anonymize_flows.sh, so you can confirm both use the same key.
+#   Writes the key to $KEY_FILE with permissions 600 inside a 700 secret dir,
+#   and prints a short sha256 fingerprint of the key to the console (safe to share);
+#   the key itself is never printed. This fingerprint matches the one logged by
+#   anonymize_flows.sh to confirm the use of the same key.
 #
 # SAFETY
 #   NEVER commit, share, or document the key. secret/ and *.key must be
@@ -48,12 +47,12 @@ if [[ -f "$KEY_FILE" && $FORCE -eq 0 ]]; then
 fi
 
 # 32 random bytes -> 64 lowercase hex chars. nfanon requires the 0x prefix for
-# this form. /dev/urandom is a cryptographically suitable source (no OpenSSL).
+# this form. /dev/urandom is a cryptographically suitable source.
 HEX_KEY="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
 [[ "$HEX_KEY" =~ ^[0-9a-fA-F]{64}$ ]] || { echo "ERROR: failed to generate 32 random bytes." >&2; exit 1; }
 
 printf '0x%s\n' "$HEX_KEY" > "$KEY_FILE"
-chmod 600 "$KEY_FILE"    # enforce perms even when rotating an existing file
+chmod 600 "$KEY_FILE"    # enforce perms
 
 echo "Wrote new key to $KEY_FILE (perms 600)."
-echo "Fingerprint: $(printf '0x%s' "$HEX_KEY" | sha256sum | cut -c1-12)  (share this, never the key)"
+echo "Fingerprint: $(printf '0x%s' "$HEX_KEY" | sha256sum | cut -c1-12)  (share fingerprint, never the actual key)"
