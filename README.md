@@ -21,9 +21,9 @@ the U.S., Latin America, the Caribbean, and South Africa.
 
 Networks like AmLight rely on sFlow- and NetFlow-style telemetry for monitoring,
 traffic engineering, and security detection. That telemetry is operationally
-sensitive: it reveals endpoints, topology, and communication patterns. Before
+sensitive as it reveals endpoints, topology, and communication patterns. Before
 flow data can be shared with students or researchers, the identifying fields must
-be anonymized while the data stays useful for analysis.
+be anonymized while preserving usability for data analysis.
 
 > All data in this repository is **synthetic** (RFC 5737 documentation ranges and
 > RFC 1918 private ranges). No private operational data is included, in keeping
@@ -69,13 +69,14 @@ analysis.
 ```
 .
 ├── README.md                     # this page
-├── folders                       # month folders to process (one per line, e.g. 2026-01)
+├── folders                       # month folders to process with anonymize_flows.sh (one per line, e.g. 2026-01)
 ├── generate_key.sh               # create/rotate a local nfanon key (0600, git-ignored)
 ├── make_sample_data.sh           # populate raw/ with a synthetic nfcapd.* file
 ├── anonymize_flows.sh            # MAIN workflow — dry-run by default, --run to execute
 ├── validate_flows.sh             # before/after validation
-├── sample_flow_records.csv       # illustrative flow records (documentation only)
-├── raw/   anon/   logs/          # data in / out / logs (contents git-ignored)
+├── sample.pcap                   # sample pcap file provided to test workflow
+├── sample_flow_records.csv       # sample.pcap in csv format, for visualization purposes
+├── raw/   anon/   logs/          # data in / out / logs (contents are git-ignored)
 └── docs/
     ├── format_discovery.md       # Phase 1 — confirmed format, fields, tool research
     ├── anonymization_workflow.md # Phase 3 — prototype workflow
