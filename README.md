@@ -7,7 +7,6 @@
 
 ![Shell](https://img.shields.io/badge/Bash-prototype-4EAA25?logo=gnu-bash&logoColor=white)
 ![Tooling](https://img.shields.io/badge/tooling-nfdump%20%7C%20nfanon-blue)
-![Scope](https://img.shields.io/badge/data-synthetic%20only-lightgrey)
 
 ---
 
