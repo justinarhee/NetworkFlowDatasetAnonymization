@@ -62,12 +62,14 @@ platform flag is not required and make_sample_data.sh falls back to nfcapd.
   ./make_sample_data.sh
       Creates sample data under raw/. Method is chosen automatically:
         - one or more pcap paths / a directory of pcaps as arguments
-          -> nfpcapd converts each into raw/<pcap-basename>/nfcapd.*, e.g.
+          -> nfpcapd converts each and files the resulting nfcapd files by
+             date at raw/YYYY-MM/YYYY-MM-DD/nfcapd.YYYYMMDDhhmm, e.g.
              ./make_sample_data.sh a.pcap b.pcapng /path/to/pcap_dir
         - nfgen (if available)  -> writes test.flows.nf, moved into raw/, or
         - Bash + nfcapd fallback -> sends five synthetic NetFlow v5 records
           to a short-lived local collector and keeps one verified file.
-      Multiple captures never overwrite each other (per-pcap subdir), and an
+      Files are placed by their own timestamp, so multiple captures merge into
+      the same date tree; a name that would collide gets a -N suffix. An
       existing non-empty synthetic sample is not overwritten. Set DEST=<dir>
       to change the pcap output root (default raw/).
 
@@ -134,3 +136,4 @@ platform flag is not required and make_sample_data.sh falls back to nfcapd.
   logs/anonymize.log                           input->output paths + key fingerprint
   logs/validation.txt                          validation report (should show OVERALL: PASS)
   secret/anon.key                              the key — do NOT open, print, commit, or share
+

@@ -12,7 +12,7 @@
 #   1. USER-PROVIDED PCAP(S) — one or more .pcap/.pcapng paths and/or directories
 #      passed as arguments (or via PCAP="a.pcap b.pcap"). Each capture is
 #      converted to flow records with nfpcapd. Directories are searched
-#      (non-recursively at find default: recursively) for *.pcap/*.pcapng.
+#      recursively for *.pcap/*.pcapng.
 #   2. nfgen — the optional nfdump test-record generator, if installed, given via
 #      NFGEN_BIN, or bundled as a Linux ARM64 binary at ./.local-tools/nfgen.
 #   3. Bash + nfcapd FALLBACK — fully portable: craft one synthetic NetFlow v5
@@ -21,22 +21,26 @@
 #      keep the resulting non-empty nfdump file. No Python/Perl, no packet
 #      capture, no payloads, no downloads.
 #
-# OUTPUT
-#   * PCAP method : DEST/<pcap-basename>/nfcapd.*  (one subdir per capture, so
-#                   multiple captures never overwrite each other). DEST defaults
-#                   to RAW_DIR (raw/). Each converted file is verified readable
-#                   by nfdump and its record count is printed.
+# OUTPUT — every method writes the date-partitioned layout the rest of the
+# pipeline expects:  <root>/YYYY-MM/YYYY-MM-DD/nfcapd.YYYYMMDDhhmm
+#   * PCAP method : each converted nfcapd file is filed under
+#                   DEST/YYYY-MM/YYYY-MM-DD/ using its OWN timestamp — taken
+#                   from the nfcapd filename, or from the first flow record if
+#                   the name has no stamp. DEST defaults to RAW_DIR (raw/). So
+#                   `./make_sample_data.sh sample.pcap` yields, e.g.,
+#                   raw/2026-01/2026-01-01/nfcapd.202601010000 — NOT
+#                   raw/sample/... . A name that would collide gets a -N suffix.
+#                   Each file is verified readable by nfdump; counts are printed.
 #   * Synthetic   : RAW_DIR/2026-01/2026-01-01/nfcapd.202601010000
-#                   (a fixed, documented sample path).
 #   Existing non-empty synthetic targets are never overwritten.
 #
 # WORKFLOW
-#   detect inputs -> pick method -> generate/convert -> verify with nfdump ->
-#   report where files landed. Next step is ./anonymize_flows.sh.
+#   detect inputs -> pick method -> generate/convert -> file by date -> verify
+#   with nfdump -> report where files landed. Next step is ./anonymize_flows.sh.
 #
 # USAGE
 #   ./make_sample_data.sh                          # synthetic (nfgen, else nfcapd)
-#   ./make_sample_data.sh capture.pcap             # convert one capture
+#   ./make_sample_data.sh sample.pcap              # -> raw/<YYYY-MM>/<YYYY-MM-DD>/nfcapd.*
 #   ./make_sample_data.sh a.pcap b.pcapng c.pcap   # convert several captures
 #   ./make_sample_data.sh /path/to/pcap_dir        # convert every *.pcap/*.pcapng in a dir
 #   PCAP="a.pcap b.pcap" ./make_sample_data.sh     # same, via environment
@@ -46,8 +50,8 @@
 #   RAW_DIR (raw)   DEST (output root for the pcap method; defaults to RAW_DIR)
 #   PCAP (space-separated capture list)   COLLECT_PORT (29995, nfcapd fallback)
 #   NFGEN_BIN (path to an nfgen binary)   TMPDIR
-#   NOTE: DEST is now environment-only; every positional argument is treated as
-#         a capture input so that multiple captures can be passed at once.
+#   NOTE: DEST is environment-only; every positional argument is treated as a
+#         capture input so that multiple captures can be passed at once.
 #
 # REQUIRES: nfdump; plus nfpcapd (pcap method) or nfcapd (fallback). Bash only.
 # ============================================================================
@@ -62,7 +66,7 @@ NFGEN_BIN="${NFGEN_BIN:-}"
 
 case "${1:-}" in
   -h|--help)
-    grep '^#' "$0" | grep -v '^#!' | sed 's/^# \{0,1\}//' | sed -n '1,50p'
+    grep '^#' "$0" | grep -v '^#!' | sed 's/^# \{0,1\}//' | sed -n '1,52p'
     exit 0
     ;;
 esac
@@ -81,6 +85,46 @@ flow_count() {
   # actually export instead of trusting `nfdump -I`.
   nfdump -q -N -r "$1" -o 'fmt:%cnt' 2>/dev/null |
     awk 'NF { count++ } END { print count + 0 }' || true
+}
+
+# Echo "YYYY-MM YYYY-MM-DD" for an nfcapd file's date. Prefer the timestamp in
+# the filename (nfcapd.YYYYMMDDhhmm); otherwise read the first flow's start date
+# with nfdump. Returns non-zero if neither yields a date.
+date_parts_for() {
+  local file="$1" name ts d
+  name="$(basename -- "$file")"
+  if [[ "$name" =~ ^nfcapd\.([0-9]{12}) ]]; then
+    ts="${BASH_REMATCH[1]}"
+    echo "${ts:0:4}-${ts:4:2} ${ts:0:4}-${ts:4:2}-${ts:6:2}"
+    return 0
+  fi
+  d="$(nfdump -q -N -r "$file" -o 'fmt:%ts' 2>/dev/null | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' | head -n1 || true)"
+  if [[ "$d" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+    echo "${d%-*} $d"          # ${d%-*} drops "-DD", leaving YYYY-MM
+    return 0
+  fi
+  return 1
+}
+
+# Move an nfcapd file into DEST/YYYY-MM/YYYY-MM-DD/, avoiding name collisions.
+# Echoes the final destination path on stdout (diagnostics go to stderr).
+place_in_date_tree() {
+  local src="$1" name parts ym ymd dir target n
+  name="$(basename -- "$src")"
+  parts="$(date_parts_for "$src")" || return 1
+  ym="${parts%% *}"
+  ymd="${parts##* }"
+  dir="$DEST/$ym/$ymd"
+  mkdir -p "$dir"
+  target="$dir/$name"
+  if [[ -e "$target" ]]; then
+    n=2
+    while [[ -e "$dir/$name-$n" ]]; do n=$((n + 1)); done
+    echo "  note: $target already exists; writing $name-$n instead" >&2
+    target="$dir/$name-$n"
+  fi
+  mv "$src" "$target"
+  printf '%s\n' "$target"
 }
 
 # ---- method 1: convert one or more user-provided pcaps with nfpcapd ---------
@@ -103,31 +147,45 @@ generate_with_pcap() {
   done
   (( ${#pcaps[@]} > 0 )) || die "no .pcap/.pcapng files found in the given input(s)."
 
-  local grand_total=0 pcap base out_dir total f flows
+  local grand_total=0 pcap stage total flows sf dest_file
   local -a files
   for pcap in "${pcaps[@]}"; do
-    base="$(basename -- "$pcap")"; base="${base%.*}"
-    out_dir="$DEST/$base"
-    mkdir -p "$out_dir"
-    echo "Converting '$pcap' -> nfcapd files under '$out_dir' ..."
-    nfpcapd -r "$pcap" -w "$out_dir"
+    # nfpcapd writes timestamp-named nfcapd.* files; stage them, then file each
+    # into DEST/YYYY-MM/YYYY-MM-DD/ so the raw/ layout stays date-partitioned.
+    stage="$(mktemp -d "${TMPDIR:-/tmp}/nfpcapd-stage.XXXXXX")"
+    echo "Converting '$pcap' ..."
+    if ! nfpcapd -r "$pcap" -w "$stage"; then
+      rm -rf "$stage"
+      die "nfpcapd failed converting '$pcap'"
+    fi
 
-    shopt -s nullglob
-    files=("$out_dir"/nfcapd.*)
-    shopt -u nullglob
-    (( ${#files[@]} > 0 )) || die "no nfcapd.* files were produced for '$pcap' — check the nfpcapd output above."
+    files=()
+    while IFS= read -r -d '' sf; do files+=("$sf"); done \
+      < <(find "$stage" -type f -name 'nfcapd.*' -print0)
+    if (( ${#files[@]} == 0 )); then
+      rm -rf "$stage"
+      die "no nfcapd.* files were produced for '$pcap' — check the nfpcapd output above."
+    fi
 
     total=0
-    for f in "${files[@]}"; do
-      flows="$(flow_count "$f")"
-      total=$(( total + ${flows:-0} ))
-      echo "  $f ($flows records)"
+    for sf in "${files[@]}"; do
+      flows="$(flow_count "$sf")"
+      if (( ${flows:-0} == 0 )); then
+        echo "  skipping empty $(basename -- "$sf")"
+        continue
+      fi
+      if ! dest_file="$(place_in_date_tree "$sf")"; then
+        rm -rf "$stage"
+        die "could not determine a date for $(basename -- "$sf")"
+      fi
+      total=$(( total + flows ))
+      echo "  $(basename -- "$pcap") -> $dest_file ($flows records)"
     done
+    rm -rf "$stage"
     (( total > 0 )) || die "converted files for '$pcap' contain no readable flows."
     grand_total=$(( grand_total + total ))
-    echo "  -> ${#files[@]} file(s), $total record(s) under $out_dir"
   done
-  echo "Converted ${#pcaps[@]} pcap(s) into nfcapd files under $DEST/ ($grand_total total record(s))."
+  echo "Converted ${#pcaps[@]} pcap(s) into $DEST/ (YYYY-MM/YYYY-MM-DD layout, $grand_total total record(s))."
 }
 
 resolve_nfgen() {
@@ -329,10 +387,14 @@ generate_with_nfcapd() {
 }
 
 # ---- dispatch: pcap(s) if provided > nfgen > nfcapd fallback ----------------
-if [[ ${#PCAP_INPUTS[@]} -gt 0 ]]; then
-  generate_with_pcap
-elif resolve_nfgen; then
-  generate_with_nfgen
-else
-  generate_with_nfcapd
+# Guarded so the file can be sourced (e.g. for testing) without running.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  if [[ ${#PCAP_INPUTS[@]} -gt 0 ]]; then
+    generate_with_pcap
+  elif resolve_nfgen; then
+    generate_with_nfgen
+  else
+    generate_with_nfcapd
+  fi
 fi
+
