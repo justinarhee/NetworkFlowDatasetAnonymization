@@ -109,25 +109,22 @@ the full workflow inside a Linux container (see [`workflow.txt`](workflow.txt)).
 git clone https://github.com/justinarhee/NetworkFlowDatasetAnonymization.git
 cd NetworkFlowDatasetAnonymization
 
-# 1) Create a local anonymization key (never committed)
+# 1) Create a local anonymization key
 ./generate_key.sh                       # writes secret/anon.key (perms 600)
 #   or: export NFANON_KEY=<32-char-string | 0x + 64 hex digits>
 
-# 2) Create sample data under raw/ (non-sensitive)
+# 2) Create sample data under raw/ (non-sensitive data generated)
 ./make_sample_data.sh                   # synthetic (nfgen, else Bash+nfcapd)
 #   or convert your own captures:
 #   ./make_sample_data.sh capture.pcap a.pcapng /path/to/pcap_dir
 
-# 3) Confirm the format
-nfdump -r raw/2026-01/2026-01-01/nfcapd.202601010000 -o extended | head
-
-# 4) DRY-RUN: shows what would happen, writes nothing under anon/
+# 3) DRY-RUN: shows what would happen, writes nothing under anon/
 ./anonymize_flows.sh
 
-# 5) RUN: anonymize into anon/, mirroring raw/
+# 4) RUN: anonymize into anon/, mirroring raw/
 ./anonymize_flows.sh --run
 
-# 6) VALIDATE: confirm only IPs changed and originals are gone
+# 5) VALIDATE: confirm only IPs changed and originals are gone
 ./validate_flows.sh
 cat logs/validation.txt
 ```
@@ -173,16 +170,6 @@ raw/ (nfdump binary)                anon/ (nfdump binary, IPs pseudonymized)
 `anonymize_flows.sh` loops **file-by-file** with `nfanon -r/-w` so each input
 file produces one anonymized file in the mirrored location; the directory tree is
 preserved instead of being collapsed into a single output.
-
-### Field policy
-
-| Anonymized (nfanon / CryptoPAn) | Preserved unchanged |
-|---|---|
-| Source IP, Destination IP | Time (start / end / duration) |
-| Next-hop IP | Protocol |
-| Router / exporter IP | Source & destination ports |
-| | Packet count, Byte count |
-| | TCP flags |
 
 ---
 
