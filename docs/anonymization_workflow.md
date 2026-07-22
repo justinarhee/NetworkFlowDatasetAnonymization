@@ -30,7 +30,7 @@ share a subnet after anonymization, so subnet-level analysis remains intact.
 |---|---|
 | `folders` | optional allowlist of folders under `raw/` to process (e.g. `2026-01`) |
 | `generate_key.sh` | creates/rotates a local nfanon key (0600, git-ignored) |
-| `make_sample_data.sh` | creates sample data: converts one or more pcaps, or writes a synthetic `nfcapd.*` file via nfgen or the Bash+nfcapd fallback |
+| `make_sample_data.sh` | creates sample data: converts `sample.pcap` or other pcaps with `nfpcapd`; if no capture is provided, it can create synthetic fallback flows |
 | `anonymize_flows.sh` | **main workflow** — dry-run by default, `--run` to execute |
 | `validate_flows.sh` | before/after validation (Phase 4) |
 | `logs/anonymize.log` | records every input→output and the key *fingerprint* only |
@@ -63,10 +63,11 @@ to overwrite.
 nfdump -r raw/2026-01/2026-01-01/nfcapd.202601010000 -o extended | head
 ```
 
-**2. Inspect the fields and statistics.**
+**2. Inspect the fields and count readable records.**
 ```
 nfdump -r raw/2026-01/2026-01-01/nfcapd.202601010000 -o extended
-nfdump -r raw/2026-01/2026-01-01/nfcapd.202601010000 -I        # stats
+nfdump -q -N -r raw/2026-01/2026-01-01/nfcapd.202601010000 -o 'fmt:%cnt' |
+  awk 'NF { count++ } END { print "Readable records:", count + 0 }'
 ```
 
 **3. Create the key (never committed).**

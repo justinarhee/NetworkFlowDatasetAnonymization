@@ -24,21 +24,21 @@ hard-coded prefixes, so the check covers both IPv4 and IPv6. The mapping check
 confirms that each original address maps to one changed pseudonym and that no two
 originals collide in the tested data.
 
-## Docker test result (Bash + nfcapd sample)
+## Docker test result (sample.pcap conversion)
 
-Tested July 7, 2026 on Ubuntu with `nfdump`/`nfanon` 1.7.3 and the five synthetic
-NetFlow v5 records produced by the built-in `nfcapd` fallback. Raw, anonymized,
-key, and log artifacts remain git-ignored.
+Tested July 22, 2026 in the Debian Bookworm Docker image with Debian
+`nfdump`/`nfanon` 1.7.1. The included `sample.pcap` was converted to nfdump
+format with `nfpcapd`, producing one `nfcapd.*` file with 20 readable flow
+records. Raw, anonymized, key, and log artifacts remain git-ignored.
 
 | Check | Before | After | Result |
 |---|---:|---:|---|
-| Flow records | 5 | 5 | PASS |
-| Total packets | 59 | 59 | PASS |
-| Total bytes | 42,128 | 42,128 | PASS |
-| Protocols | TCP=3, UDP=1, ICMP=1 | Same | PASS |
+| Flow records | 20 | 20 | PASS |
+| Total packets | 141 | 141 | PASS |
+| Total bytes | 29,969 | 29,969 | PASS |
 | Preserved record fields | Baseline | Identical | PASS |
 | Packet/byte distributions | Baseline | Identical | PASS |
-| Source/destination port distributions | Baseline | Identical | PASS |
+| Protocol and port distributions | Baseline | Identical | PASS |
 | Per-minute time series | Baseline | Identical | PASS |
 | Source/destination top-talker structure | Baseline | Identical | PASS |
 | Original IPs visible | Yes | No | PASS |
@@ -47,10 +47,9 @@ key, and log artifacts remain git-ignored.
 Automated output:
 
 ```text
-scope: folders file: folders
 input files discovered: 1
-BEFORE: flows=5, packets=59, bytes=42128
-AFTER : flows=5, packets=59, bytes=42128
+BEFORE: flows=20, packets=141, bytes=29969
+AFTER : flows=20, packets=141, bytes=29969
 record count and packet/byte totals: identical [PASS]
 all preserved record fields (time/protocol/ports/packets/bytes/TCP flags): identical [PASS]
 packet distribution: identical [PASS]
@@ -63,22 +62,24 @@ source top-talker structure: identical [PASS]
 destination top-talker structure: identical [PASS]
 all original IP addresses were replaced (data-driven IPv4/IPv6 check) [PASS]
 IP pseudonyms are changed, deterministic, and collision-free across the dataset [PASS]
+files checked: 1/1
 OVERALL: PASS — required utility preserved and all IP fields pseudonymized
 ```
 
 Exact pseudonyms are intentionally omitted: they depend on the secret key and are
 unnecessary for demonstrating the checks.
 
-## nfgen compatibility run
-
-The official nfdump `v1.7.3` `nfgen` test utility was also compiled for Linux
-ARM64 and exercised through the same workflow. It generated 20 readable test
-records containing IPv4 and IPv6 extensions. Before and after totals were 20
-records, 466 packets, and 117,760 bytes; every validation check passed.
-
 ## Reproduce the validation
 
 ```bash
+./test_workflow.sh
+```
+
+Or manually:
+
+```bash
+./generate_key.sh
+./make_sample_data.sh sample.pcap
 ./anonymize_flows.sh          # preflight + dry-run
 ./anonymize_flows.sh --run
 ./validate_flows.sh

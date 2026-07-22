@@ -68,9 +68,13 @@ analysis.
 ```
 .
 ├── README.md                     # this page
+├── Dockerfile                    # reproducible Debian test image
+├── .dockerignore                 # keeps generated data/secrets out of Docker build context
+├── workflow.txt                  # full Docker commands for the PCAP-first workflow
+├── test_workflow.sh              # one-command local workflow test inside Docker/Linux
 ├── folders                       # month folders to process with anonymize_flows.sh (one per line, e.g. 2026-01)
 ├── generate_key.sh               # create/rotate a local nfanon key (0600, git-ignored)
-├── make_sample_data.sh           # populate raw/ with a synthetic nfcapd.* file
+├── make_sample_data.sh           # convert sample.pcap/pcaps, or create fallback sample flows
 ├── anonymize_flows.sh            # MAIN workflow — dry-run by default, --run to execute
 ├── validate_flows.sh             # before/after validation
 ├── sample.pcap                   # sample pcap file provided to test workflow
@@ -85,20 +89,30 @@ analysis.
 
 ---
 
-## Prerequisites (Ubuntu)
+## Prerequisites
 
-Install the nfdump suite, which provides `nfdump`, `nfanon`, `nfcapd`, and
-`nfpcapd`:
+The recommended path is Docker on macOS. The included Docker image is based on
+Debian Bookworm and installs the Debian `nfdump` package, which provides
+`nfdump`, `nfanon`, `nfcapd`, and `nfpcapd`.
+
+```bash
+colima start
+docker build --platform linux/arm64 -t flow-anonymizer:debian .
+docker run --rm -it --platform linux/arm64 -v "$PWD":/work -w /work flow-anonymizer:debian
+```
+
+If you are running directly on Debian or Ubuntu instead of Docker, install the
+nfdump suite:
 
 ```bash
 sudo apt-get update && sudo apt-get install -y nfdump
 nfdump -V        # confirm installation and version (1.7.x)
 ```
 
-Ubuntu does not package the optional `nfgen` test-record generator. If it is
-absent, `make_sample_data.sh` automatically falls back to a built-in
-Bash + `nfcapd` generator (see below). macOS does not ship `nfgen` at all; run
-the full workflow inside a Linux container (see [`workflow.txt`](workflow.txt)).
+This prototype does not require `nfgen`. The normal test path converts the
+included `sample.pcap` into nfdump format with `nfpcapd`. If no capture is
+provided, `make_sample_data.sh` can still fall back to synthetic sample
+generation.
 
 ---
 
@@ -112,9 +126,9 @@ cd NetworkFlowDatasetAnonymization
 ./generate_key.sh                       # writes secret/anon.key (perms 600)
 #   or: export NFANON_KEY=<32-char-string | 0x + 64 hex digits>
 
-# 2) Create sample data under raw/ (non-sensitive data generated)
-./make_sample_data.sh                   # synthetic (nfgen, else Bash+nfcapd)
-#   or convert your own captures:
+# 2) Create sample data under raw/ from the included packet capture
+./make_sample_data.sh sample.pcap
+#   or convert your own captures/directories:
 #   ./make_sample_data.sh capture.pcap a.pcapng /path/to/pcap_dir
 
 # 3) DRY-RUN: shows what would happen, writes nothing under anon/
@@ -144,9 +158,16 @@ whole `raw/` tree. `anonymize_flows.sh` skips inputs already anonymized under
 `anon/` (use `--force` to overwrite).
 
 > **Note:** `nfdump`/`nfanon` are separately licensed and are **not** bundled
-> here. Without `nfgen`, `make_sample_data.sh` sends five synthetic NetFlow v5
-> records to a short-lived local `nfcapd` collector over UDP and keeps exactly
-> one verified, non-empty nfdump file.
+> here. The Docker image installs them from Debian packages. The preferred
+> sample path is PCAP conversion with `nfpcapd`; the built-in synthetic fallback
+> remains available for environments without a capture file.
+
+For a complete Docker command sequence, see [`workflow.txt`](workflow.txt). For
+a one-command check from inside Docker/Linux, run:
+
+```bash
+./test_workflow.sh
+```
 
 ---
 
@@ -161,7 +182,7 @@ raw/ (nfdump binary)                anon/ (nfdump binary, IPs pseudonymized)
    │                              (CryptoPAn, prefix-preserving, IP fields only)
    ▼
  validate (validate_flows.sh):
-   nfdump -r <raw> -I     vs   nfdump -r <anon> -I         → counts/totals must match
+   export normalized records from raw and anon with nfdump
    preserved fields, distributions, per-minute series      → must be identical
    extract every original IP from raw, check it in anon     → must be absent
 ```
@@ -172,18 +193,19 @@ preserved instead of being collapsed into a single output.
 
 ---
 
-## Validation results (synthetic sample)
+## Validation results (sample.pcap)
 
-The built-in generator writes five NetFlow v5 records:
+The included `sample.pcap` converts to 20 nfdump flow records:
 
 | Metric | Before | After |
 |---|---|---|
-| Flow records | 5 | 5 |
-| Total packets | 59 | 59 |
-| Total bytes | 42,128 | 42,128 |
-| Protocols | TCP=3, UDP=1, ICMP=1 | TCP=3, UDP=1, ICMP=1 |
-| Destination ports | 443, 22, 53, 80, 0 | 443, 22, 53, 80, 0 |
-| Real IPs visible | yes | **no** |
+| Flow records | 20 | 20 |
+| Total packets | 141 | 141 |
+| Total bytes | 29,969 | 29,969 |
+| Preserved record fields | Baseline | Identical |
+| Distributions and time series | Baseline | Identical |
+| Source/destination top-talker structure | Baseline | Identical |
+| Original IPs visible | Yes | **No** |
 
 Prefix preservation is observable: a source that appears in two flows maps to the
 **same** pseudonym both times, and adjacent source addresses map to adjacent

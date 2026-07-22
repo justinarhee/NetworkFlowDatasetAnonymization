@@ -13,8 +13,8 @@
 #      passed as arguments (or via PCAP="a.pcap b.pcap"). Each capture is
 #      converted to flow records with nfpcapd. Directories are searched
 #      recursively for *.pcap/*.pcapng.
-#   2. nfgen — the optional nfdump test-record generator, if installed, given via
-#      NFGEN_BIN, or bundled as a Linux ARM64 binary at ./.local-tools/nfgen.
+#   2. nfgen — optional nfdump test-record generator, if already installed.
+#      The documented workflow does not require it.
 #   3. Bash + nfcapd FALLBACK — fully portable: craft one synthetic NetFlow v5
 #      datagram in pure Bash (5 records, 59 packets, 42,128 bytes; TCP=3/UDP=1/
 #      ICMP=1), send it to a short-lived local nfcapd collector over UDP, and
@@ -39,8 +39,8 @@
 #   with nfdump -> report where files landed. Next step is ./anonymize_flows.sh.
 #
 # USAGE
-#   ./make_sample_data.sh                          # synthetic (nfgen, else nfcapd)
 #   ./make_sample_data.sh sample.pcap              # -> raw/<YYYY-MM>/<YYYY-MM-DD>/nfcapd.*
+#   ./make_sample_data.sh                          # optional synthetic fallback path
 #   ./make_sample_data.sh a.pcap b.pcapng c.pcap   # convert several captures
 #   ./make_sample_data.sh /path/to/pcap_dir        # convert every *.pcap/*.pcapng in a dir
 #   PCAP="a.pcap b.pcap" ./make_sample_data.sh     # same, via environment
@@ -49,7 +49,7 @@
 # ENVIRONMENT OVERRIDES
 #   RAW_DIR (raw)   DEST (output root for the pcap method; defaults to RAW_DIR)
 #   PCAP (space-separated capture list)   COLLECT_PORT (29995, nfcapd fallback)
-#   NFGEN_BIN (path to an nfgen binary)   TMPDIR
+#   NFGEN_BIN (optional path to an nfgen binary)   TMPDIR
 #   NOTE: DEST is environment-only; every positional argument is treated as a
 #         capture input so that multiple captures can be passed at once.
 #
