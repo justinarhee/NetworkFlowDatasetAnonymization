@@ -261,3 +261,36 @@ internal paths, or sensitive screenshots.
 The nfdump suite is not included here and is distributed separately under its own
 BSD license. Built as a CIARA/FIU flow-data anonymization research activity;
 AmLight is operated by CIARA at FIU with NSF support.
+
+
+WHAT I CHANGED:
+
+Updated [README.md](/Users/aarushganji/Desktop/v3/README.md) to make the workflow PCAP-first:
+Uses ./make_sample_data.sh sample.pcap
+Says nfgen is not required
+Updates validation numbers to 20 flows / 141 packets / 29,969 bytes
+Points to workflow.txt and test_workflow.sh
+
+Simplified [Dockerfile](/Users/aarushganji/Desktop/v3/Dockerfile):
+Removed the whole nfgen build stage
+Docker now only installs Debian nfdump
+Runtime includes nfdump, nfanon, nfcapd, and nfpcapd
+
+Added [test_workflow.sh](/Users/aarushganji/Desktop/v3/test_workflow.sh):
+Runs the full workflow end to end
+Resets generated local output
+Generates a key
+Converts sample.pcap
+Runs dry-run
+Runs anonymization
+Runs validation
+Prints logs/validation.txt
+
+Added [workflow.txt](/Users/aarushganji/Desktop/v3/workflow.txt):
+Full Docker commands
+PCAP-first instructions
+No nfgen dependency
+
+Updated [folders](/Users/aarushganji/Desktop/v3/folders):
+Removed active 2025-12
+Keeps only 2026-01 active so the default workflow works without /tmp/folders-test
