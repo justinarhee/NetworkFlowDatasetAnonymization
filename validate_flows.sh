@@ -5,8 +5,8 @@
 # Confirms nfanon changed ONLY the IP addresses. Validation is data-driven:
 # every required preserved field (time, protocol, source/destination ports,
 # packets, bytes, TCP flags) is exported per record and compared exactly, and
-# the original address set is derived from the raw records themselves — so it
-# works for any address ranges (IPv4 or IPv6), not just hard-coded ones.
+# the original address set is derived from the raw records themselves. It
+# works for any address ranges (IPv4 or IPv6).
 #
 # A missing directory, zero discovered files, a missing output, or any failed
 # nfdump command makes the run FAIL (it never silently passes on no data).

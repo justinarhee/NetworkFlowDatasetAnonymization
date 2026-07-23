@@ -70,7 +70,7 @@ analysis.
 ├── README.md                     # this page
 ├── folders                       # month folders to process with anonymize_flows.sh (one per line, e.g. 2026-01)
 ├── generate_key.sh               # create/rotate a local nfanon key (0600, git-ignored)
-├── make_sample_data.sh           # populate raw/ with a synthetic nfcapd.* file
+├── make_sample_data.sh           # populate raw/ with a synthetic nfcapd.* file or convert sample.pcap/pcaps
 ├── anonymize_flows.sh            # MAIN workflow — dry-run by default, --run to execute
 ├── validate_flows.sh             # before/after validation
 ├── sample.pcap                   # sample pcap file provided to test workflow
@@ -85,7 +85,7 @@ analysis.
 
 ---
 
-## Prerequisites (Ubuntu)
+## Prerequisites
 
 Install the nfdump suite, which provides `nfdump`, `nfanon`, `nfcapd`, and
 `nfpcapd`:
@@ -94,11 +94,6 @@ Install the nfdump suite, which provides `nfdump`, `nfanon`, `nfcapd`, and
 sudo apt-get update && sudo apt-get install -y nfdump
 nfdump -V        # confirm installation and version (1.7.x)
 ```
-
-Ubuntu does not package the optional `nfgen` test-record generator. If it is
-absent, `make_sample_data.sh` automatically falls back to a built-in
-Bash + `nfcapd` generator (see below). macOS does not ship `nfgen` at all; run
-the full workflow inside a Linux container (see [`workflow.txt`](workflow.txt)).
 
 ---
 
@@ -113,7 +108,7 @@ cd NetworkFlowDatasetAnonymization
 #   or: export NFANON_KEY=<32-char-string | 0x + 64 hex digits>
 
 # 2) Create sample data under raw/ (non-sensitive data generated)
-./make_sample_data.sh                   # synthetic (nfgen, else Bash+nfcapd)
+./make_sample_data.sh                   # synthetic (Bash+nfcapd)
 #   or convert your own captures:
 #   ./make_sample_data.sh capture.pcap a.pcapng /path/to/pcap_dir
 
@@ -144,7 +139,7 @@ whole `raw/` tree. `anonymize_flows.sh` skips inputs already anonymized under
 `anon/` (use `--force` to overwrite).
 
 > **Note:** `nfdump`/`nfanon` are separately licensed and are **not** bundled
-> here. Without `nfgen`, `make_sample_data.sh` sends five synthetic NetFlow v5
+> here. `make_sample_data.sh` sends five synthetic NetFlow v5
 > records to a short-lived local `nfcapd` collector over UDP and keeps exactly
 > one verified, non-empty nfdump file.
 

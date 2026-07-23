@@ -6,16 +6,14 @@
 #   Produce nfdump binary (nfcapd.*) flow files for the prototype to anonymize.
 #   It creates either (a) real flow files converted from one or more packet
 #   captures you supply, or (b) synthetic, non-sensitive sample flows when no
-#   capture is given — so the pipeline can always be exercised end to end.
+#   capture is given.
 #
 # INPUT (chooses a method automatically, in this order):
 #   1. USER-PROVIDED PCAP(S) — one or more .pcap/.pcapng paths and/or directories
 #      passed as arguments (or via PCAP="a.pcap b.pcap"). Each capture is
 #      converted to flow records with nfpcapd. Directories are searched
 #      recursively for *.pcap/*.pcapng.
-#   2. nfgen — the optional nfdump test-record generator, if installed, given via
-#      NFGEN_BIN, or bundled as a Linux ARM64 binary at ./.local-tools/nfgen.
-#   3. Bash + nfcapd FALLBACK — fully portable: craft one synthetic NetFlow v5
+#   2. Bash + nfcapd FALLBACK — fully portable: craft one synthetic NetFlow v5
 #      datagram in pure Bash (5 records, 59 packets, 42,128 bytes; TCP=3/UDP=1/
 #      ICMP=1), send it to a short-lived local nfcapd collector over UDP, and
 #      keep the resulting non-empty nfdump file. No Python/Perl, no packet
@@ -39,19 +37,12 @@
 #   with nfdump -> report where files landed. Next step is ./anonymize_flows.sh.
 #
 # USAGE
-#   ./make_sample_data.sh                          # synthetic (nfgen, else nfcapd)
+#   ./make_sample_data.sh                          # synthetic through nfcapd
 #   ./make_sample_data.sh sample.pcap              # -> raw/<YYYY-MM>/<YYYY-MM-DD>/nfcapd.*
 #   ./make_sample_data.sh a.pcap b.pcapng c.pcap   # convert several captures
 #   ./make_sample_data.sh /path/to/pcap_dir        # convert every *.pcap/*.pcapng in a dir
 #   PCAP="a.pcap b.pcap" ./make_sample_data.sh     # same, via environment
 #   DEST=raw/captured ./make_sample_data.sh a.pcap # choose the output root
-#
-# ENVIRONMENT OVERRIDES
-#   RAW_DIR (raw)   DEST (output root for the pcap method; defaults to RAW_DIR)
-#   PCAP (space-separated capture list)   COLLECT_PORT (29995, nfcapd fallback)
-#   NFGEN_BIN (path to an nfgen binary)   TMPDIR
-#   NOTE: DEST is environment-only; every positional argument is treated as a
-#         capture input so that multiple captures can be passed at once.
 #
 # REQUIRES: nfdump; plus nfpcapd (pcap method) or nfcapd (fallback). Bash only.
 # ============================================================================
@@ -62,7 +53,6 @@ DEST="${DEST:-$RAW_DIR}"
 COLLECT_PORT="${COLLECT_PORT:-29995}"
 FALLBACK_TARGET="2026-01/2026-01-01/nfcapd.202601010000"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-NFGEN_BIN="${NFGEN_BIN:-}"
 
 case "${1:-}" in
   -h|--help)
@@ -81,8 +71,7 @@ fi
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 flow_count() {
-  # nfgen leaves its summary counters at zero, so count the records nfdump can
-  # actually export instead of trusting `nfdump -I`.
+  # count the records nfdump can actually export instead of trusting `nfdump -I`.
   nfdump -q -N -r "$1" -o 'fmt:%cnt' 2>/dev/null |
     awk 'NF { count++ } END { print count + 0 }' || true
 }
@@ -188,60 +177,6 @@ generate_with_pcap() {
   echo "Converted ${#pcaps[@]} pcap(s) into $DEST/ (YYYY-MM/YYYY-MM-DD layout, $grand_total total record(s))."
 }
 
-resolve_nfgen() {
-  if [[ -n "$NFGEN_BIN" ]]; then
-    [[ -x "$NFGEN_BIN" ]] || die "NFGEN_BIN is not executable: $NFGEN_BIN"
-    return 0
-  fi
-  if command -v nfgen >/dev/null 2>&1; then
-    NFGEN_BIN="$(command -v nfgen)"
-    return 0
-  fi
-  # The persisted binary is Linux ARM64 and must not be selected on macOS.
-  if [[ "$(uname -s)" == "Linux" && -x "$SCRIPT_DIR/.local-tools/nfgen" ]]; then
-    NFGEN_BIN="$SCRIPT_DIR/.local-tools/nfgen"
-    return 0
-  fi
-  return 1
-}
-
-generate_with_nfgen() {
-  command -v nfdump >/dev/null 2>&1 || die "nfdump is required to verify nfgen output."
-  local output="$RAW_DIR/$FALLBACK_TARGET"
-  local work_dir generated flows
-
-  if [[ -f "$output" ]]; then
-    flows="$(flow_count "$output")"
-    if [[ "${flows:-0}" -gt 0 ]]; then
-      echo "sample already exists at $output ($flows records); refusing to overwrite it."
-      return 0
-    fi
-    die "existing target has no readable flows: $output (move it aside and retry)"
-  fi
-
-  # nfgen is an upstream test binary, not a normal installed CLI. Version 1.7.3
-  # accepts no output option and always creates ./test.flows.nf.
-  work_dir="$(mktemp -d "${TMPDIR:-/tmp}/nfgen-sample.XXXXXX")"
-  echo "using nfgen: $NFGEN_BIN"
-  if ! (cd "$work_dir" && "$NFGEN_BIN"); then
-    rm -rf "$work_dir"
-    die "nfgen failed"
-  fi
-  generated="$work_dir/test.flows.nf"
-  [[ -f "$generated" ]] || { rm -rf "$work_dir"; die "nfgen did not create test.flows.nf"; }
-  flows="$(flow_count "$generated")"
-  if [[ "${flows:-0}" -le 0 ]]; then
-    rm -rf "$work_dir"
-    die "nfgen output contains no readable flows"
-  fi
-
-  mkdir -p "$(dirname "$output")"
-  mv "$generated" "$output"
-  rm -rf "$work_dir"
-  echo "generated $output ($flows nfgen test records)"
-  echo "verified by exporting $flows readable records with nfdump"
-}
-
 # PAYLOAD holds printable \xHH escapes. Keeping the encoded packet in a Bash
 # variable avoids NUL-byte limitations; one final printf emits the whole UDP
 # datagram in a single write.
@@ -317,7 +252,6 @@ build_netflow_v5_packet() {
 }
 
 generate_with_nfcapd() {
-  command -v nfcapd >/dev/null 2>&1 || die "nfgen is absent and nfcapd is not installed. Install the nfdump package."
   command -v nfdump >/dev/null 2>&1 || die "nfdump is required to verify the generated sample."
   [[ -x /usr/bin/printf ]] || die "the coreutils /usr/bin/printf command is required for the binary UDP write"
 
@@ -344,7 +278,7 @@ generate_with_nfcapd() {
   trap cleanup EXIT
   trap 'cleanup; exit 130' INT TERM
 
-  echo "nfgen not found; using the built-in Bash + nfcapd fallback."
+  echo "Using the built-in Bash + nfcapd fallback."
   nfcapd -w "$capture_dir" -p "$COLLECT_PORT" > "$capture_log" 2>&1 &
   collector_pid=$!
   sleep 1
@@ -386,13 +320,11 @@ generate_with_nfcapd() {
   cleanup
 }
 
-# ---- dispatch: pcap(s) if provided > nfgen > nfcapd fallback ----------------
+# ---- dispatch: pcap(s) if provided > nfcapd fallback ----------------
 # Guarded so the file can be sourced (e.g. for testing) without running.
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
   if [[ ${#PCAP_INPUTS[@]} -gt 0 ]]; then
     generate_with_pcap
-  elif resolve_nfgen; then
-    generate_with_nfgen
   else
     generate_with_nfcapd
   fi

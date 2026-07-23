@@ -13,11 +13,10 @@
 #   1. PATH TARGET(S) given on the command line (files or directories). Only
 #      those are processed. A target may be a single nfcapd file, a day dir,
 #      a month dir, or any directory; directories are searched recursively for
-#      "$FILE_GLOB". This is how you anonymize just one new day/file instead of
-#      re-processing the whole dataset.
+#      "$FILE_GLOB".
 #   2. THE FOLDERS FILE ("$FOLDERS_FILE"), if it exists and has content. Each
 #      non-blank, non-"#" line names a folder under raw/ to process recursively.
-#      (This is the default scope / allowlist for a whole-dataset run.)
+#      This is the default scope / allowlist for a whole-dataset run.
 #   3. THE ENTIRE raw/ TREE, if no targets are given and no folders file exists.
 #
 # OUTPUT
@@ -53,11 +52,6 @@
 #   --force, -f        overwrite anon/ outputs that already exist
 #   --key-file PATH    read the key from PATH instead of $KEY_FILE
 #   -h, --help         print this header
-#
-# ENVIRONMENT OVERRIDES
-#   RAW_DIR (raw)  ANON_DIR (anon)  FOLDERS_FILE (folders)  KEY_FILE
-#   (secret/anon.key)  LOG_FILE (logs/anonymize.log)  FILE_GLOB (nfcapd.*)
-#   NFANON_KEY (key value; takes precedence over KEY_FILE)
 #
 # REQUIRES: nfanon (nfdump suite), coreutils. Bash only.
 # ============================================================================

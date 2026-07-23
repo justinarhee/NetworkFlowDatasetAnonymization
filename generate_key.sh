@@ -24,7 +24,6 @@
 #   uncorrelatable mapping.
 #
 # REQUIRES: coreutils (od, tr, sha256sum) and /dev/urandom. Bash only.
-#           No OpenSSL is needed — randomness comes from /dev/urandom via od.
 # ============================================================================
 set -euo pipefail
 
